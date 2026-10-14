@@ -13,6 +13,9 @@ try {
   process.exit(1);
 }
 
+// Substrings expected in the playlist NameHint. Ranked Arena's is "ga_ranked_crossplay" (verified live).
+const NAME_HINTS = { arena: ['arena', 'crossplay'] };
+
 const rows = [];
 const nulled = [];
 let authFailed = false;
@@ -33,7 +36,8 @@ for (const key of MODE_KEYS) {
   }
   try {
     const info = await source.getPlaylistInfo(id);
-    const match = info.name && info.name.toLowerCase().includes(key) ? 'OK' : 'CHECK NAME';
+    const lower = info.name?.toLowerCase() ?? '';
+    const match = (NAME_HINTS[key] ?? [key]).some((hint) => lower.includes(hint)) ? 'OK' : 'CHECK NAME';
     rows.push({ mode: key, expected: MODES[key], id, name: info.name ?? '?', csr: info.hasCsr ?? '?', result: match });
   } catch (e) {
     if (isAuthError(e)) {
