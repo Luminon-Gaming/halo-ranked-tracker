@@ -38,4 +38,4 @@ scheduler.js (node-cron, in the npm start process) ── executeFetch()
 
 ## Open items
 
-See `ASSUMPTIONS.md` → "Still unverified": capture a live unranked response, confirm Snipers behavior after Nov 2, 2026, and confirm the playlist names returned by `discover`.
+See `ASSUMPTIONS.md` → "Still unverified": capture a live unranked response, and confirm Snipers behavior after Nov 2, 2026.
