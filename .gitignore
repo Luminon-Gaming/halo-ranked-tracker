@@ -1,0 +1,15 @@
+node_modules/
+.env
+.cache/
+.preview/
+data/assets/*
+!data/assets/.gitkeep
+!data/assets/sample-*.svg
+data/xuid-cache.json
+data/*.tmp
+data/ranks.dry-run.json
+public/tiers/*.png
+*.log
+.netlify/*
+!.netlify/results.md
+.DS_Store

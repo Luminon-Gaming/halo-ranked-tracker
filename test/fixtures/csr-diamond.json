@@ -1,0 +1,41 @@
+{
+  "Current": {
+    "Value": 1372,
+    "MeasurementMatchesRemaining": 0,
+    "Tier": "Diamond",
+    "TierStart": 1350,
+    "SubTier": 3,
+    "NextTier": "Diamond",
+    "NextTierStart": 1400,
+    "NextSubTier": 4,
+    "InitialMeasurementMatches": 5,
+    "DemotionProtectionMatchesRemaining": 0,
+    "InitialDemotionProtectionMatches": 3
+  },
+  "SeasonMax": {
+    "Value": 1418,
+    "MeasurementMatchesRemaining": 0,
+    "Tier": "Diamond",
+    "TierStart": 1400,
+    "SubTier": 4,
+    "NextTier": "Diamond",
+    "NextTierStart": 1450,
+    "NextSubTier": 5,
+    "InitialMeasurementMatches": 5,
+    "DemotionProtectionMatchesRemaining": 0,
+    "InitialDemotionProtectionMatches": 3
+  },
+  "AllTimeMax": {
+    "Value": 1466,
+    "MeasurementMatchesRemaining": 0,
+    "Tier": "Diamond",
+    "TierStart": 1450,
+    "SubTier": 5,
+    "NextTier": "Onyx",
+    "NextTierStart": 1500,
+    "NextSubTier": 0,
+    "InitialMeasurementMatches": 5,
+    "DemotionProtectionMatchesRemaining": 0,
+    "InitialDemotionProtectionMatches": 3
+  }
+}

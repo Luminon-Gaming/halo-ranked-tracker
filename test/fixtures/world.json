@@ -1,0 +1,179 @@
+{
+  "accounts": [
+    "VoidHarbinger",
+    "nova kestrel",
+    "PlasmaPilgrim",
+    "TheLastSpartan7#2049",
+    "BansheeQueen",
+    "WarthogWendy",
+    "GruntBirthday",
+    "Sangheili Sam",
+    "NeedlerNeil",
+    "GhostOfReach404"
+  ],
+  "users": [
+    {
+      "xuid": "2533274900000001",
+      "gamertag": "VoidHarbinger",
+      "gamerpic": {
+        "small": "https://images.example.invalid/2533274900000001-s.png",
+        "medium": "https://images.example.invalid/2533274900000001-m.png",
+        "large": "",
+        "xlarge": ""
+      }
+    },
+    {
+      "xuid": "2533274900000002",
+      "gamertag": "Nova Kestrel",
+      "gamerpic": {
+        "small": "https://images.example.invalid/2533274900000002-s.png",
+        "medium": "https://images.example.invalid/2533274900000002-m.png",
+        "large": "",
+        "xlarge": ""
+      }
+    },
+    {
+      "xuid": "2533274900000003",
+      "gamertag": "PlasmaPilgrim",
+      "gamerpic": {
+        "small": "https://images.example.invalid/2533274900000003-s.png",
+        "medium": "https://images.example.invalid/2533274900000003-m.png",
+        "large": "",
+        "xlarge": ""
+      }
+    },
+    {
+      "xuid": "2533274900000004",
+      "gamertag": "TheLastSpartan7#2049",
+      "gamerpic": {
+        "small": "https://images.example.invalid/2533274900000004-s.png",
+        "medium": "https://images.example.invalid/2533274900000004-m.png",
+        "large": "",
+        "xlarge": ""
+      }
+    },
+    {
+      "xuid": "2533274900000005",
+      "gamertag": "BansheeQueen",
+      "gamerpic": {
+        "small": "https://images.example.invalid/2533274900000005-s.png",
+        "medium": "https://images.example.invalid/2533274900000005-m.png",
+        "large": "",
+        "xlarge": ""
+      }
+    },
+    {
+      "xuid": "2533274900000006",
+      "gamertag": "WarthogWendy",
+      "gamerpic": {
+        "small": "https://images.example.invalid/2533274900000006-s.png",
+        "medium": "https://images.example.invalid/2533274900000006-m.png",
+        "large": "",
+        "xlarge": ""
+      }
+    },
+    {
+      "xuid": "2533274900000007",
+      "gamertag": "GruntBirthday",
+      "gamerpic": {
+        "small": "https://images.example.invalid/2533274900000007-s.png",
+        "medium": "https://images.example.invalid/2533274900000007-m.png",
+        "large": "",
+        "xlarge": ""
+      }
+    },
+    {
+      "xuid": "2533274900000008",
+      "gamertag": "Sangheili Sam",
+      "gamerpic": {
+        "small": "https://images.example.invalid/2533274900000008-s.png",
+        "medium": "https://images.example.invalid/2533274900000008-m.png",
+        "large": "",
+        "xlarge": ""
+      }
+    },
+    {
+      "xuid": "2533274900000009",
+      "gamertag": "NeedlerNeil",
+      "gamerpic": {
+        "small": "https://images.example.invalid/2533274900000009-s.png",
+        "medium": "https://images.example.invalid/2533274900000009-m.png",
+        "large": "",
+        "xlarge": ""
+      }
+    }
+  ],
+  "csrCalendar": {
+    "Seasons": [
+      {
+        "CsrSeasonFilePath": "CsrSeason13-2.json",
+        "StartDate": {
+          "ISO8601Date": "2026-05-05T17:00:00Z"
+        },
+        "EndDate": {
+          "ISO8601Date": "2026-08-04T17:00:00Z"
+        }
+      },
+      {
+        "CsrSeasonFilePath": "CsrSeason13-3.json",
+        "StartDate": {
+          "ISO8601Date": "2026-08-04T17:00:00Z"
+        },
+        "EndDate": {
+          "ISO8601Date": "2026-11-03T17:00:00Z"
+        }
+      },
+      {
+        "CsrSeasonFilePath": "CsrSeason14-1.json",
+        "StartDate": {
+          "ISO8601Date": "2026-11-03T17:00:00Z"
+        },
+        "EndDate": {
+          "ISO8601Date": "2027-02-02T18:00:00Z"
+        }
+      }
+    ]
+  },
+  "csr": {
+    "edfef3ac-9cbe-4fa2-b949-8f29deafd483": {
+      "2533274900000001": "onyx",
+      "2533274900000002": "diamond-6",
+      "2533274900000003": "diamond",
+      "2533274900000004": "platinum-997",
+      "2533274900000005": "gold",
+      "2533274900000006": "placement",
+      "2533274900000007": "unranked",
+      "2533274900000008": "silver",
+      "2533274900000009": "bronze"
+    },
+    "fa5aa2a3-2428-4912-a023-e1eeea7b877c": {
+      "2533274900000001": "onyx-edge",
+      "2533274900000002": "diamond",
+      "2533274900000003": "platinum-997",
+      "2533274900000004": "gold",
+      "2533274900000005": "unranked",
+      "2533274900000006": "silver",
+      "2533274900000007": "unranked-tier",
+      "2533274900000008": "bronze"
+    },
+    "dcb2e24e-05fb-4390-8076-32a0cdb4326e": {
+      "2533274900000001": "diamond-6",
+      "2533274900000002": "onyx",
+      "2533274900000003": "gold",
+      "2533274900000004": "diamond",
+      "2533274900000005": "platinum-997",
+      "2533274900000006": "gold",
+      "2533274900000007": "placement",
+      "2533274900000008": "unranked",
+      "2533274900000009": "silver"
+    },
+    "6233381c-fc96-40b9-b1ff-f6a4de72dd7a": {
+      "2533274900000001": "diamond",
+      "2533274900000002": "platinum-997",
+      "2533274900000004": "onyx-edge",
+      "2533274900000005": "placement",
+      "2533274900000006": "bronze",
+      "2533274900000009": "gold"
+    }
+  }
+}

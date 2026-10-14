@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Halo Ranked Tracker</title>
+  <meta name="description" content="Daily Halo Infinite ranked CSR for your squad.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#board">Skip to leaderboard</a>
+  <header class="top">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
+        <path d="M24 3 44 14v20L24 45 4 34V14z" fill="none" stroke="currentColor" stroke-width="2.5"/>
+        <path d="M12 21c4-4 20-4 24 0l-3 9H15z" fill="currentColor"/>
+        <path d="M16 24h16" stroke="var(--bg)" stroke-width="2"/>
+      </svg>
+      <div>
+        <p class="eyebrow">Halo Infinite · Ranked</p>
+        <h1>Squad CSR Tracker</h1>
+      </div>
+    </div>
+    <div class="status" aria-live="polite">
+      <span id="season" class="chip" hidden></span>
+      <span id="sample" class="chip chip-info" hidden>Sample data</span>
+      <span id="updated" class="updated">Loading…</span>
+      <span id="warn" class="chip chip-warn" hidden></span>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" role="status" hidden>
+    <span class="banner-icon" aria-hidden="true"></span>
+    <p id="banner-text"></p>
+    <button id="banner-close" type="button" aria-label="Dismiss notice">&times;</button>
+  </div>
+
+  <main id="board" tabindex="-1">
+    <section class="kpis" id="kpis" aria-label="Squad summary"></section>
+
+    <div class="toolbar" role="search">
+      <label class="field search">
+        <span class="sr-only">Filter by gamertag</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="q" type="search" placeholder="Filter gamertags" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="field">
+        <span class="label">Sort</span>
+        <select id="sort"></select>
+      </label>
+      <button id="dir" class="btn" type="button" aria-label="Toggle sort direction">
+        <span id="dir-label">High → Low</span>
+      </button>
+      <span id="count" class="count" aria-live="polite"></span>
+    </div>
+
+    <div class="board-wrap">
+      <table class="board" id="table">
+        <caption class="sr-only">Ranked CSR per player and playlist</caption>
+        <thead><tr id="head"></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div id="empty" class="empty" hidden></div>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <p>Unofficial fan tool. Not affiliated with Halo Studios, Microsoft or Xbox. Data refreshes once a day.</p>
+  </footer>
+  <script src="app.js" type="module"></script>
+</body>
+</html>

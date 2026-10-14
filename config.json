@@ -1,0 +1,17 @@
+{
+  "port": 3000,
+  "host": "127.0.0.1",
+  "schedule": { "cron": "0 6 * * *", "timezone": "America/New_York", "fetchOnBootIfStaleHours": 24 },
+  "throttle": { "concurrency": 2, "delayMs": 500, "maxRetries": 4, "baseBackoffMs": 1000, "csrBatchSize": 25 },
+  "playlists": {
+    "arena": "edfef3ac-9cbe-4fa2-b949-8f29deafd483",
+    "doubles": "fa5aa2a3-2428-4912-a023-e1eeea7b877c",
+    "slayer": "dcb2e24e-05fb-4390-8076-32a0cdb4326e",
+    "snipers": "6233381c-fc96-40b9-b1ff-f6a4de72dd7a"
+  },
+  "rotation": { "snipers": true },
+  "emblemSource": "gamerpic",
+  "accentColor": "#2ee6a6",
+  "accountsFile": "accounts.txt",
+  "dataFile": "data/ranks.json"
+}
