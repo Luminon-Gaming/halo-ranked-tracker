@@ -12,7 +12,8 @@
     "auth": "node src/cli/auth.js",
     "discover": "node src/cli/discover.js",
     "fetch": "node src/cli/fetch.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "deploy": "node scripts/build-preview.js && npx wrangler@4.151.0 deploy"
   },
   "dependencies": {
     "@azure/msal-node": "7.0.1",

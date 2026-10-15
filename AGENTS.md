@@ -4,7 +4,7 @@ Guide for AI agents working on this repo.
 
 ## What this is
 
-A local Node.js (20.6+, ESM, plain JS, **no build step**) app that fetches Halo Infinite ranked CSR once a day for the gamertags in `accounts.txt`, writes `data/ranks.json`, and serves a dashboard at `127.0.0.1:3000` that reads only that file. Netlify hosts a static, read-only preview built from the sample data (`netlify.toml` → `scripts/build-preview.js` → `.preview/`).
+A local Node.js (20.6+, ESM, plain JS, **no build step**) app that fetches Halo Infinite ranked CSR once a day for the gamertags in `accounts.txt`, writes `data/ranks.json`, and serves a dashboard at `127.0.0.1:3000` that reads only that file. Cloudflare Workers (static assets, no Worker code) hosts a static, read-only preview built from the sample data (`wrangler.jsonc` → `scripts/build-preview.js` → `.preview/`; deploy with `npm run deploy`).
 
 ## Architecture
 

@@ -1,0 +1,10 @@
+{
+  // Read-only dashboard preview (sample data) served as static assets; no Worker code.
+  // `npm run deploy` rebuilds .preview/ first. The real tracker runs locally (`npm start`).
+  "name": "halo-ranked-tracker",
+  "compatibility_date": "2026-10-13",
+  "workers_dev": true,
+  "assets": {
+    "directory": "./.preview"
+  }
+}
