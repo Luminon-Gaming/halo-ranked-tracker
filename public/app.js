@@ -5,7 +5,10 @@ const TIER_COLORS = { bronze: '#d29466', silver: '#c9d2dc', gold: '#f4c95d', pla
 const STALE_HOURS = 26;
 const $ = (id) => document.getElementById(id);
 
-const state = { data: null, q: '', sort: 'arena', dir: 'desc' };
+const DEFAULT_PLAYER = 'DaLuminar';
+const MAX_RECENT = 8;
+// data is what gets rendered: the looked-up player (view 'player') or the daily roster (view 'roster').
+const state = { data: null, roster: null, lookup: null, view: 'player', player: DEFAULT_PLAYER, recent: [], busy: false, note: '', q: '', sort: 'arena', dir: 'desc' };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const rankName = (tier, sub) => (tier ? (sub ? `${tier} ${sub}` : tier) : '');
@@ -13,17 +16,43 @@ const modeKeys = () => MODE_ORDER.filter((k) => state.data?.modes?.[k]).concat(O
 const label = (k) => SHORT[k] ?? state.data?.modes?.[k]?.label ?? k;
 
 // --- URL state -------------------------------------------------------------
+// Saved in localStorage: the last player looked up and the recent ones. A ?player= link wins over it.
+const PREFS_KEY = 'lookup-prefs';
+const sameTag = (a, b) => a.toLowerCase() === b.toLowerCase();
+function loadPrefs() {
+  try {
+    const o = JSON.parse(localStorage.getItem(PREFS_KEY));
+    const clean = (s) => (typeof s === 'string' ? s.trim().slice(0, 40) : '');
+    return { last: clean(o?.last), recent: Array.isArray(o?.recent) ? o.recent.map(clean).filter(Boolean).slice(0, MAX_RECENT) : [] };
+  } catch { return { last: '', recent: [] }; }
+}
+function savePrefs() {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ last: state.player, recent: state.recent })); } catch {}
+}
+function remember(gamertag) {
+  state.player = gamertag;
+  state.recent = [gamertag, ...state.recent.filter((g) => !sameTag(g, gamertag))].slice(0, MAX_RECENT);
+  savePrefs();
+}
+
 function readUrl() {
   const p = new URLSearchParams(location.search);
+  const prefs = loadPrefs();
+  state.recent = prefs.recent;
+  state.player = p.get('player')?.trim().slice(0, 40) || prefs.last || DEFAULT_PLAYER;
+  state.view = p.get('view') === 'roster' ? 'roster' : 'player';
   state.q = p.get('q') ?? '';
   state.sort = p.get('sort') ?? 'arena';
   state.dir = p.get('dir') === 'asc' ? 'asc' : 'desc';
 }
 function writeUrl() {
   const p = new URLSearchParams();
-  if (state.q) p.set('q', state.q);
-  if (state.sort !== 'arena') p.set('sort', state.sort);
-  if (state.dir !== 'desc') p.set('dir', state.dir);
+  if (state.view === 'roster') {
+    p.set('view', 'roster');
+    if (state.q) p.set('q', state.q);
+    if (state.sort !== 'arena') p.set('sort', state.sort);
+    if (state.dir !== 'desc') p.set('dir', state.dir);
+  } else if (state.lookup) p.set('player', state.lookup.player.gamertag);
   const qs = p.toString();
   history.replaceState(null, '', qs ? `?${qs}` : location.pathname);
 }
@@ -170,8 +199,17 @@ function renderHead() {
   $('dir-label').textContent = state.sort === 'gamertag' ? (state.dir === 'asc' ? 'A → Z' : 'Z → A') : state.dir === 'asc' ? 'Low → High' : 'High → Low';
 }
 
-function renderRows() {
+const matches = (p, q) => p.gamertag.toLowerCase().includes(q);
+function renderCount() {
+  if (state.view === 'player') return ($('count').textContent = '');
   const q = state.q.trim().toLowerCase();
+  const all = state.data?.players ?? [];
+  const text = q ? `${all.filter((p) => matches(p, q)).length} of ${all.length} players` : `${all.length} players`;
+  $('count').textContent = text + (state.note ? ` · ${state.note}` : '');
+}
+
+function renderRows() {
+  const q = state.view === 'roster' ? state.q.trim().toLowerCase() : '';
   const all = state.data.players ?? [];
   const list = sorted(q ? all.filter((p) => p.gamertag.toLowerCase().includes(q)) : all);
   const keys = modeKeys();
@@ -179,7 +217,7 @@ function renderRows() {
     const cls = p.stale ? 'row-stale' : p.error && !keys.some((k) => p.modes?.[k] && p.modes[k].status !== 'error') ? 'row-error' : '';
     return `<tr class="${cls}">${playerCell(p, i)}${keys.map((k) => modeCell(k, p.modes?.[k])).join('')}</tr>`;
   }).join('');
-  $('count').textContent = q ? `${list.length} of ${all.length} players` : `${all.length} players`;
+  renderCount();
   const empty = $('empty');
   empty.hidden = list.length > 0;
   if (!list.length) empty.innerHTML = all.length ? `<h2>No matches</h2><p>No gamertag contains “${esc(state.q)}”.</p>` : '<h2>No players yet</h2><p>Add gamertags to <code>accounts.txt</code>, then run <code>npm run fetch</code>.</p>';
@@ -273,12 +311,48 @@ function renderBanner() {
   el.hidden = false;
 }
 
+function renderControls() {
+  const player = state.view === 'player';
+  $('sort').closest('label').hidden = player;
+  $('dir').hidden = player;
+  const hasRoster = (state.roster?.players ?? []).length > 0;
+  const btn = $('roster-btn');
+  btn.hidden = !hasRoster || (!player && !state.lookup);
+  btn.textContent = player ? 'Roster' : state.lookup ? `← ${state.lookup.player.gamertag}` : 'Look up';
+  const others = state.recent.filter((g) => !state.lookup || !sameTag(g, state.lookup.player.gamertag));
+  const recent = $('recent');
+  recent.hidden = !others.length;
+  recent.innerHTML = others.length ? `<span class="recent-label">Recent</span>${others.map((g) => `<button type="button" class="chip chip-btn" data-player="${esc(g)}">${esc(g)}</button>`).join('')}` : '';
+}
+
 function render() {
   if (!state.data) return;
   renderHeader();
   renderBanner();
   renderHead();
   renderRows();
+  renderControls();
+}
+
+/** Picks what the page shows: the looked-up player, or the daily roster from ranks.json. */
+function applyView() {
+  const r = state.roster;
+  const l = state.lookup;
+  if (state.view === 'roster' && r) state.data = r;
+  else if (l) {
+    state.view = 'player';
+    state.data = { ...(r ?? {}), schemaVersion: 1, csrSeasonId: l.csrSeasonId, modes: l.modes, lastUpdated: l.fetchedAt, lastAttempt: null, sample: false, players: [l.player] };
+  } else {
+    state.view = 'roster';
+    state.data = r;
+  }
+  if (!state.data) return;
+  if (!modeKeys().includes(state.sort) && state.sort !== 'gamertag') state.sort = 'arena';
+  $('empty').hidden = true;
+  $('table').hidden = false;
+  $('q').value = state.view === 'player' ? state.lookup.player.gamertag : state.q;
+  renderKpis();
+  render();
 }
 
 function showNoData(msg) {
@@ -290,32 +364,112 @@ function showNoData(msg) {
   empty.innerHTML = `<h2>No ranked data yet</h2><p>${msg}</p>`;
 }
 
-async function load() {
+/** The daily roster (data/ranks.json) is optional now: a missing file just means there is no roster view. */
+async function loadRoster() {
   try {
     const res = await fetch('/api/ranks', { cache: 'no-cache', headers: { Accept: 'application/json' } });
-    if (res.status === 404) return showNoData('Run <code>npm run fetch</code> to create <code>data/ranks.json</code>.');
+    if (res.status === 404) return null;
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    state.data = await res.json();
-    const accent = state.data.ui?.accentColor;
+    state.roster = await res.json();
+    const accent = state.roster.ui?.accentColor;
     if (accent && /^#[0-9a-f]{3,8}$/i.test(accent)) document.documentElement.style.setProperty('--accent', accent);
-    if (!modeKeys().includes(state.sort) && state.sort !== 'gamertag') state.sort = 'arena';
-    $('table').hidden = false;
-    renderKpis();
-    render();
+    return state.roster;
   } catch (e) {
-    if (!state.data) showNoData(`Couldn't load <code>/api/ranks</code> (${esc(e.message)}). Is <code>npm start</code> running?`);
+    return null;
+  }
+}
+
+function showLookupError(title, msg) {
+  $('table').hidden = true;
+  $('kpis').innerHTML = '';
+  const empty = $('empty');
+  empty.hidden = false;
+  empty.innerHTML = `<h2>${esc(title)}</h2><p>${esc(msg)}</p>`;
+  renderControls();
+}
+
+/** Looks one gamertag up through the local server. Resolves true when a player is on screen. */
+async function lookupPlayer(raw) {
+  const gamertag = String(raw ?? '').trim().replace(/\s+/g, ' ');
+  if (!gamertag || state.busy) return false;
+  state.busy = true;
+  $('go').disabled = true;
+  $('count').textContent = `Looking up ${gamertag}…`;
+  try {
+    const res = await fetch(`/api/player?gamertag=${encodeURIComponent(gamertag)}`, { headers: { Accept: 'application/json' } });
+    if (!(res.headers.get('content-type') ?? '').includes('application/json')) {
+      // The hosted preview is static files only, so there is no lookup endpoint behind it.
+      state.note = 'Live lookup needs the local app (npm start)';
+      if (state.roster) {
+        // Nothing to look up against, so the search box just filters the saved roster.
+        state.view = 'roster';
+        state.q = gamertag;
+        writeUrl();
+        applyView();
+      } else showLookupError('Live lookup isn’t available here', 'This copy only serves saved data. Run the app locally with npm start to look up any player.');
+      return false;
+    }
+    const body = await res.json();
+    if (!res.ok) {
+      showLookupError(res.status === 404 ? `No player named “${gamertag}”` : 'Couldn’t look that up', body.message ?? `HTTP ${res.status}`);
+      return false;
+    }
+    state.note = '';
+    state.lookup = body;
+    state.view = 'player';
+    remember(body.player.gamertag);
+    writeUrl();
+    applyView();
+    return true;
+  } catch (e) {
+    showLookupError('Couldn’t look that up', `${e.message}. Is npm start running?`);
+    return false;
+  } finally {
+    state.busy = false;
+    $('go').disabled = false;
+    renderCount();
+  }
+}
+
+async function start() {
+  await loadRoster();
+  if (state.view === 'roster' && state.roster) return applyView();
+  if (await lookupPlayer(state.player)) return;
+  if (state.roster) {
+    state.view = 'roster';
+    writeUrl();
+    applyView();
   }
 }
 
 // --- Events ----------------------------------------------------------------
 let t;
+// Typing narrows the roster; pressing Enter (or Look up) fetches that exact player.
 $('q').addEventListener('input', (e) => {
+  if (state.view !== 'roster') return;
   clearTimeout(t);
   t = setTimeout(() => {
     state.q = e.target.value;
     writeUrl();
     renderRows();
   }, 150);
+});
+$('lookup-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  clearTimeout(t); // a pending roster filter must not repaint over the lookup result
+  lookupPlayer($('q').value);
+});
+$('recent').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-player]');
+  if (b) lookupPlayer(b.dataset.player);
+});
+$('roster-btn').addEventListener('click', () => {
+  if (state.view === 'player') {
+    state.view = 'roster';
+  } else if (state.lookup) state.view = 'player';
+  else return;
+  writeUrl();
+  applyView();
 });
 function setSort(k, toggle) {
   if (toggle && state.sort === k) state.dir = state.dir === 'asc' ? 'desc' : 'asc';
@@ -336,7 +490,9 @@ $('head').addEventListener('click', (e) => {
 });
 
 readUrl();
-$('q').value = state.q;
-load();
-setInterval(load, 5 * 60 * 1000);
+$('q').value = state.view === 'roster' ? state.q : state.player;
+start();
+setInterval(async () => {
+  if (await loadRoster() && state.view === 'roster') applyView();
+}, 5 * 60 * 1000);
 setInterval(() => state.data && renderHeader(), 60 * 1000);

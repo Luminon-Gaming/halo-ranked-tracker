@@ -29,7 +29,7 @@ scheduler.js (node-cron, in the npm start process) ── executeFetch()
 - Contract (`data/ranks.json`, schemaVersion 1): `subTier`, `nextSubTier` and `peakSubTier` are **1-indexed** (API + 1). Status enum: `ranked | placement | unranked | not_in_rotation | unavailable | error`. If you change the shape, bump `schemaVersion` and update the README, the sample, and `public/app.js`.
 - Never hardcode playlist rotation or the CSR season: use `config.rotation.*` and the per-run calendar lookup.
 - Never invent endpoints or response fields. Check them against the `halo-infinite-api@14.3.2` types, and record anything unverified in `ASSUMPTIONS.md`.
-- Front end: no framework, no external fonts or CDNs. `app.js` should stay around 15 KB. Status must always carry a text label, not just a color.
+- Front end: no framework, no external fonts or CDNs. `app.js` is about 24 KB now (player lookup, saved recents); keep it from growing further. The search box calls `/api/player` (`src/lookup.js`); a non-JSON answer means a static host with no lookup, and the page falls back to filtering the roster. Status must always carry a text label, not just a color.
 - Secrets only go in `.env` and `.cache/` (git-ignored, chmod 600). Never log tokens.
 
 ## Regenerating the sample
