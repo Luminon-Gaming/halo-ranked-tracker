@@ -30,8 +30,7 @@ function writeUrl() {
 
 // --- Images ----------------------------------------------------------------
 function iconSrc(url) {
-  if (!url) return '';
-  return state.data?.imageCdn && url.endsWith('.png') ? `/.netlify/images?url=${encodeURIComponent(url)}&w=80&fm=webp` : url;
+  return url || '';
 }
 /** Built-in SVG badge used when an official tier icon can't be loaded. */
 function fallbackBadge(name) {

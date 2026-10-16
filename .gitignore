@@ -10,6 +10,5 @@ data/*.tmp
 data/ranks.dry-run.json
 public/tiers/*.png
 *.log
-.netlify/*
-!.netlify/results.md
+.wrangler/
 .DS_Store

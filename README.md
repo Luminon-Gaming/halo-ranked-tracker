@@ -17,7 +17,7 @@ npm start          # → http://127.0.0.1:3000, serving the committed sample dat
 
 The sample `data/ranks.json` has 10 fictional players and shows every state: Onyx, ranked tiers, placement, unranked, out of rotation, unavailable, error, a stale player and a long gamertag. In the sample, Snipers is marked out of rotation so you can see how that state looks.
 
-A read-only copy of this preview is also deployed on Netlify (`netlify.toml` → `scripts/build-preview.js`).
+A read-only copy of this preview is also deployed on Cloudflare Workers (see [Deploying the preview](#deploying-the-preview)).
 
 ## Prerequisites
 
@@ -140,6 +140,17 @@ Unknown keys log a warning. A value of the wrong type stops startup with an erro
 - **Gamertag not found.** Check the spelling in `accounts.txt`. Modern gamertags need their `#1234` suffix. Delete `data/xuid-cache.json` to force a fresh lookup.
 - **"Another fetch is already running".** Another fetch is holding `.cache/fetch.lock`. If that process died, the lock is detected as stale on the next run.
 
+## Deploying the preview
+
+The hosted copy is a static, read-only dashboard built from the committed **sample** data. It never talks to Halo, and sign-in and fetching stay on your machine. It is served by Cloudflare Workers static assets, with no Worker code (`wrangler.jsonc`).
+
+```bash
+npx wrangler login      # once
+npm run deploy          # rebuilds .preview/ (scripts/build-preview.js), then wrangler deploy
+```
+
+`scripts/build-preview.js` also writes `.preview/_redirects` (`/api/ranks` → `/api/ranks.json`) and `.preview/_headers` (no-cache for `/api/*`, one week for `/tiers/*`). To try it locally first: `node scripts/build-preview.js && npx wrangler dev`.
+
 ## Security
 
 Secrets live only in `.env` and `.cache/` (MSAL cache, Xbox/Halo tokens, saved with mode 600). Both are git-ignored, as are downloaded gamerpics and the XUID cache. After a real run, `git status` should show only `data/ranks.json` changed.
@@ -155,6 +166,8 @@ src/            config, accounts, scheduler, server
 public/         dashboard (index.html, styles.css, app.js, tiers/)
 data/           ranks.json (sample committed), xuid-cache.json, assets/
 test/           node:test suites + fixtures
+scripts/        build-preview.js (static preview for Cloudflare Workers)
+wrangler.jsonc  Workers static-assets config for the preview
 ```
 
 See `ASSUMPTIONS.md` for the decisions that still need checking against a live response.
