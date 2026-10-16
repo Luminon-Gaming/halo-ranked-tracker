@@ -74,7 +74,7 @@ function group(m) {
 function sorted(players) {
   const sign = state.dir === 'asc' ? 1 : -1;
   const byName = (a, b) => a.gamertag.localeCompare(b.gamertag, undefined, { sensitivity: 'base' });
-  if (state.sort === 'gamertag') return players.slice().sort((a, b) => sign * -byName(a, b));
+  if (state.sort === 'gamertag') return players.slice().sort((a, b) => sign * byName(a, b));
   const k = state.sort;
   return players.slice().sort((a, b) => {
     const ma = a.modes?.[k], mb = b.modes?.[k];
