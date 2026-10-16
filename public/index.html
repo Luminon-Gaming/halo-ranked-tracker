@@ -40,12 +40,14 @@
   <main id="board" tabindex="-1">
     <section class="kpis" id="kpis" aria-label="Squad summary"></section>
 
-    <div class="toolbar" role="search">
+    <form class="toolbar" id="lookup-form" role="search">
       <label class="field search">
-        <span class="sr-only">Filter by gamertag</span>
+        <span class="sr-only">Look up a player by gamertag</span>
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        <input id="q" type="search" placeholder="Filter gamertags" autocomplete="off" spellcheck="false">
+        <input id="q" type="search" placeholder="Look up a gamertag (Name or Name#1234)" autocomplete="off" spellcheck="false" maxlength="40">
       </label>
+      <button id="go" class="btn" type="submit">Look up</button>
+      <button id="roster-btn" class="btn" type="button" hidden>Roster</button>
       <label class="field">
         <span class="label">Sort</span>
         <select id="sort"></select>
@@ -54,7 +56,8 @@
         <span id="dir-label">High → Low</span>
       </button>
       <span id="count" class="count" aria-live="polite"></span>
-    </div>
+    </form>
+    <div id="recent" class="recent" aria-label="Recent lookups" hidden></div>
 
     <div class="board-wrap">
       <table class="board" id="table">

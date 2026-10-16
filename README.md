@@ -1,6 +1,6 @@
 # Halo Ranked Tracker
 
-Tracks Halo Infinite ranked CSR for a list of gamertags. Once a day it fetches every player's rank in **Ranked Arena, Doubles, Slayer and Snipers**, saves the result to `data/ranks.json`, and serves a dark esports-style dashboard on `http://127.0.0.1:3000`. The dashboard only ever reads that file: it never contacts Halo services and never needs a token.
+Tracks Halo Infinite ranked CSR for a list of gamertags. Once a day it fetches every player's rank in **Ranked Arena, Doubles, Slayer and Snipers**, saves the result to `data/ranks.json`, and serves a dark esports-style dashboard on `http://127.0.0.1:3000`. The roster view only ever reads that file. The search box looks up any gamertag on demand through the local server (`/api/player`), which is the only part of the dashboard that triggers a Halo request, and it opens on **DaLuminar** by default. The browser never sees a token.
 
 - Node.js 20.6+, plain ESM JavaScript, no build step
 - [`halo-infinite-api@14.3.2`](https://www.npmjs.com/package/halo-infinite-api) for the Halo/Xbox APIs, `@azure/msal-node` for Microsoft sign-in, `node-cron` for the daily run
@@ -18,6 +18,12 @@ npm start          # → http://127.0.0.1:3000, serving the committed sample dat
 The sample `data/ranks.json` has 10 fictional players and shows every state: Onyx, ranked tiers, placement, unranked, out of rotation, unavailable, error, a stale player and a long gamertag. In the sample, Snipers is marked out of rotation so you can see how that state looks.
 
 A read-only copy of this preview is also deployed on Cloudflare Workers (see [Deploying the preview](#deploying-the-preview)).
+
+## Looking up a player
+
+Type a gamertag in the search box (`Name` or `Name#1234`) and press Enter. The server runs the normal pipeline for that one player, caches the answer for 5 minutes, and never touches `data/ranks.json`. The last player and the 8 most recent lookups are kept in your browser's `localStorage` (key `lookup-prefs`), and a `?player=Name` link wins over the saved one. The **Roster** button switches to the daily `accounts.txt` list, which is optional now.
+
+Lookups need the sign-in from `npm run auth`, so they only work where `npm start` runs. The hosted preview is static files with no server code, so there the search box just filters the sample roster and says so.
 
 ## Prerequisites
 

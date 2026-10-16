@@ -105,6 +105,11 @@ select option { background: var(--panel); }
 .btn { height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--panel); cursor: pointer; font-size: 14px; }
 .btn:hover { border-color: var(--accent); }
 .count { margin-left: auto; color: var(--muted); font-size: 13px; }
+.recent { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -2px 0 12px; }
+.recent-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.chip-btn { font: inherit; font-size: 13px; cursor: pointer; background: var(--panel); }
+.chip-btn:hover, .chip-btn:focus-visible { border-color: var(--accent); }
+button:disabled { opacity: .55; cursor: progress; }
 
 /* Board */
 .board-wrap { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
