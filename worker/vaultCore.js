@@ -20,7 +20,7 @@ export const DEFAULT_LIMITS = {
   uncachedPerDay: 300,
   uncachedPerIpPerHour: 10,
   upstreamPerMinute: 60, // every request this account sends to Microsoft/Xbox/Halo
-  okTtlSec: 600, // a found player is reused for 10 minutes
+  okTtlSec: 1800, // a found player is reused for 30 minutes: CSR only moves after matches, and the default player loads on every visit
   notFoundTtlSec: 3600, // so is "no such gamertag", which blunts name enumeration
   cacheMax: 300,
 };
@@ -137,8 +137,38 @@ export class Vault {
     return this.msLock;
   }
 
+  // Secrets are trimmed: a trailing newline from piped `wrangler secret put` input would otherwise end up in the
+  // OAuth form body, the first refresh would fail as invalid_grant, and that would open the breaker.
+  seed() {
+    return String(this.env.HALO_REFRESH_TOKEN_SEED ?? '').trim();
+  }
+
+  clientId() {
+    return String(this.env.HALO_AZURE_CLIENT_ID ?? '').trim();
+  }
+
+  /**
+   * Run once per instance (and from the Durable Object constructor). When the seed secret or client ID differs from the
+   * one used last time, a new account or a re-seed is meant: forget everything derived from the old credentials, the
+   * breaker included, or a fresh seed would stay locked out for up to 30 minutes and the old account's Halo tokens
+   * would keep being used until they expire.
+   */
+  ensureSeed() {
+    this.seedCheck ??= (async () => {
+      const seed = this.seed();
+      if (!seed) return;
+      const hash = await sha256Hex(`${seed}|${this.clientId()}`);
+      if ((await this.storage.get('seedHash')) === hash) return;
+      const derived = [...(await this.storage.list({ prefix: 'halo:' })).keys()];
+      await this.storage.delete(['breaker', 'ms', ...derived]);
+      await this.storage.put('seedHash', hash);
+      this.log.info?.('[vault] new credentials: cleared breaker and cached tokens');
+    })();
+    return this.seedCheck;
+  }
+
   async refreshMs() {
-    const seed = this.env.HALO_REFRESH_TOKEN_SEED;
+    const seed = this.seed();
     if (!seed) throw new AuthError('not seeded');
     const seedHash = await sha256Hex(seed);
     let state = await this.storage.get('ms');
@@ -148,7 +178,7 @@ export class Vault {
     const res = await this.guardedFetch(TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ client_id: this.env.HALO_AZURE_CLIENT_ID, grant_type: 'refresh_token', refresh_token: state.refreshToken, scope: SCOPE }),
+      body: new URLSearchParams({ client_id: this.clientId(), grant_type: 'refresh_token', refresh_token: state.refreshToken, scope: SCOPE }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.access_token) {
@@ -187,6 +217,7 @@ export class Vault {
   async lookup(gamertag, ipHash = 'none') {
     const key = gamertag.toLowerCase();
     const t = this.now();
+    await this.ensureSeed();
     await this.prune(t).catch(() => {});
     const hit = await this.storage.get(`c:${key}`);
     if (hit && hit.until > t) return { status: hit.status, body: hit.body };
@@ -225,6 +256,11 @@ export class Vault {
       if (/HTTP 429/.test(JSON.stringify(player ?? {}))) return this.fromUpstreamStatus();
       // The pipeline folds failures into the player record; a record with nothing usable is a failed lookup, not data.
       if (!player || player.error) {
+        // Every mode failing with a Halo 5xx means Halo is down: pause briefly instead of hammering it.
+        if (/HTTP 5\d\d/.test(JSON.stringify(player ?? {}))) {
+          await this.openBreaker('halo_5xx', MIN);
+          return { status: 503, body: UNAVAILABLE, retryAfter: 60 };
+        }
         this.log.error?.('[vault] lookup produced no usable data');
         return { status: 502, body: { error: 'lookup_failed', message: 'The lookup failed. Try again in a moment.' } };
       }

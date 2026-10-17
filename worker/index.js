@@ -17,6 +17,8 @@ export class HaloVault extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.vault = new Vault({ storage: ctx.storage, env, config, log: console });
+    // A new `wrangler secret put` restarts this object with the new env; adopt it before any request is served.
+    ctx.blockConcurrencyWhile(() => this.vault.ensureSeed());
   }
   lookup(gamertag, ipHash) {
     return this.vault.lookup(gamertag, ipHash);
@@ -38,12 +40,13 @@ async function handlePlayer(request, env) {
     if (rl && !(await rl.limit({ key: ip })).success) return fail(429, 'rate_limited', 'Slow down a little.', { 'Retry-After': '30' });
   }
 
-  if (env.TURNSTILE_SECRET) {
-    const ok = await verifyTurnstile({ token: request.headers.get('x-turnstile-token'), secret: env.TURNSTILE_SECRET, ip });
+  const turnstileSecret = String(env.TURNSTILE_SECRET ?? '').trim();
+  if (turnstileSecret) {
+    const ok = await verifyTurnstile({ token: request.headers.get('x-turnstile-token'), secret: turnstileSecret, ip });
     if (!ok) return fail(403, 'challenge_failed', 'Verification failed. Reload the page and try again.');
   }
 
-  const out = await vaultOf(env).lookup(parsed.gamertag, (await sha256Hex(`${ip}|${env.IP_SALT ?? ''}`)).slice(0, 16));
+  const out = await vaultOf(env).lookup(parsed.gamertag, (await sha256Hex(`${ip}|${String(env.IP_SALT ?? '').trim()}`)).slice(0, 16));
   const headers = {};
   if (out.retryAfter) headers['Retry-After'] = String(out.retryAfter);
   // Found players and "no such gamertag" may sit in the visitor's browser briefly; failures never do.
@@ -74,7 +77,7 @@ export default {
       const avatar = /^\/api\/avatar\/(\d{1,20})$/.exec(pathname);
       if (avatar) return await handleAvatar(request, env, avatar[1]);
       // The page reads this to learn whether to show the Turnstile challenge. The site key is public by design.
-      if (pathname === '/api/config') return json(200, { turnstileSiteKey: env.TURNSTILE_SECRET && env.TURNSTILE_SITE_KEY ? env.TURNSTILE_SITE_KEY : null, lookup: env.LOOKUP_ENABLED !== 'false' }, { 'Cache-Control': 'no-cache' });
+      if (pathname === '/api/config') return json(200, { turnstileSiteKey: String(env.TURNSTILE_SECRET ?? '').trim() && String(env.TURNSTILE_SITE_KEY ?? '').trim() ? String(env.TURNSTILE_SITE_KEY).trim() : null, lookup: env.LOOKUP_ENABLED !== 'false' }, { 'Cache-Control': 'no-cache' });
       return env.ASSETS.fetch(request);
     } catch (e) {
       console.error(`[worker] ${e?.name ?? 'Error'}`); // name only: never the message, which could carry request data
