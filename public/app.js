@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 const DEFAULT_PLAYER = 'DaLuminar';
 const MAX_RECENT = 8;
 // data is what gets rendered: the looked-up player (view 'player') or the daily roster (view 'roster').
-const state = { data: null, roster: null, lookup: null, view: 'player', player: DEFAULT_PLAYER, recent: [], busy: false, note: '', q: '', sort: 'arena', dir: 'desc' };
+const state = { data: null, roster: null, lookup: null, view: 'player', player: DEFAULT_PLAYER, recent: [], busy: false, note: '', lastError: '', siteKey: null, ts: null, q: '', sort: 'arena', dir: 'desc' };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const rankName = (tier, sub) => (tier ? (sub ? `${tier} ${sub}` : tier) : '');
@@ -388,7 +388,29 @@ function showLookupError(title, msg) {
   renderControls();
 }
 
-/** Looks one gamertag up through the local server. Resolves true when a player is on screen. */
+// Optional Cloudflare Turnstile challenge, switched on by the server (/api/config). Tokens are single-use.
+function turnstileToken() {
+  return new Promise((resolve, reject) => {
+    const run = () => {
+      const T = window.turnstile;
+      const done = (tok) => resolve(tok);
+      const fail = () => reject(new Error('The verification check failed. Reload and try again'));
+      if (state.ts == null) state.ts = T.render('#ts-box', { sitekey: state.siteKey, execution: 'execute', appearance: 'interaction-only', callback: (tok) => state.tsDone(tok), 'error-callback': () => state.tsFail() });
+      else T.reset(state.ts);
+      state.tsDone = done;
+      state.tsFail = fail;
+      T.execute(state.ts);
+    };
+    if (window.turnstile) return run();
+    const s = document.createElement('script');
+    s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    s.onload = run;
+    s.onerror = () => reject(new Error('Couldn’t load the verification check'));
+    document.head.append(s);
+  });
+}
+
+/** Looks one gamertag up through the server. Resolves true when a player is on screen. */
 async function lookupPlayer(raw) {
   const gamertag = String(raw ?? '').trim().replace(/\s+/g, ' ');
   if (!gamertag || state.busy) return false;
@@ -396,7 +418,9 @@ async function lookupPlayer(raw) {
   $('go').disabled = true;
   $('count').textContent = `Looking up ${gamertag}…`;
   try {
-    const res = await fetch(`/api/player?gamertag=${encodeURIComponent(gamertag)}`, { headers: { Accept: 'application/json' } });
+    const headers = { Accept: 'application/json' };
+    if (state.siteKey) headers['x-turnstile-token'] = await turnstileToken();
+    const res = await fetch(`/api/player?gamertag=${encodeURIComponent(gamertag)}`, { headers });
     if (!(res.headers.get('content-type') ?? '').includes('application/json')) {
       // The hosted preview is static files only, so there is no lookup endpoint behind it.
       state.note = 'Live lookup needs the local app (npm start)';
@@ -411,6 +435,7 @@ async function lookupPlayer(raw) {
     }
     const body = await res.json();
     if (!res.ok) {
+      state.lastError = res.status === 404 ? '' : (body.message ?? `HTTP ${res.status}`);
       showLookupError(res.status === 404 ? `No player named “${gamertag}”` : 'Couldn’t look that up', body.message ?? `HTTP ${res.status}`);
       return false;
     }
@@ -422,7 +447,7 @@ async function lookupPlayer(raw) {
     applyView();
     return true;
   } catch (e) {
-    showLookupError('Couldn’t look that up', `${e.message}. Is npm start running?`);
+    showLookupError('Couldn’t look that up', `${e.message}.${e.name === 'TypeError' ? ' Is the server running?' : ''}`);
     return false;
   } finally {
     state.busy = false;
@@ -433,10 +458,15 @@ async function lookupPlayer(raw) {
 
 async function start() {
   await loadRoster();
+  try {
+    const res = await fetch('/api/config', { headers: { Accept: 'application/json' } });
+    if ((res.headers.get('content-type') ?? '').includes('application/json')) state.siteKey = (await res.json()).turnstileSiteKey ?? null;
+  } catch {}
   if (state.view === 'roster' && state.roster) return applyView();
   if (await lookupPlayer(state.player)) return;
   if (state.roster) {
     state.view = 'roster';
+    if (state.lastError) state.note = state.lastError; // say why we fell back to the roster
     writeUrl();
     applyView();
   }
