@@ -175,7 +175,9 @@ How it fits together: the Azure app from [Azure app registration](#azure-app-reg
    ```
    `seed:worker` signs in with a cache of its own (your normal `.cache/` sign-in is not touched), refuses to upload unless the signed-in address equals `--expect`, passes the token to `wrangler secret put` on stdin, and deletes its local copy straight away. Never reuse that token elsewhere: it rotates, so a second copy would be invalidated. To re-seed, run the command again.
 4. Open the staging URL and look up a gamertag. When it works, repeat steps 3 and 2 for the real Worker (`--name halo-ranked-tracker`, then `npm run deploy`).
-5. Recommended: create a Turnstile widget in the Cloudflare dashboard and set `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET` with `wrangler secret put`. With both set, every lookup needs a passed challenge. Also consider a WAF rate-limiting rule on `/api/player` in the dashboard.
+5. Recommended: create a Turnstile widget in the Cloudflare dashboard, add **both** `*.workers.dev` hostnames (staging and real) to it, and set `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET` with `wrangler secret put`. With both set, every lookup needs a passed challenge.
+
+The staging and real Workers share the two rate-limit counters (`namespace_id` 4101 and 4102 in `wrangler.jsonc`), so heavy testing on staging can use up the same per-visitor allowance. WAF rate-limiting rules are configured per domain on Cloudflare, so they only help once the Worker is on a domain of your own; on `workers.dev` the built-in limits below are what protect it.
 
 **Protections**
 
@@ -183,8 +185,8 @@ How it fits together: the Azure app from [Azure app registration](#azure-app-reg
 |---|---|
 | Input | Only `GET /api/player?gamertag=` with a valid gamertag (400 otherwise). Input is never echoed back. Cross-site requests and foreign `Origin`s are refused, and no CORS headers are sent. |
 | Per visitor | Workers rate limits (6 per 10 s and 20 per minute, per Cloudflare location, keyed on the connecting IP), plus 10 fresh lookups per hour per hashed IP in the Durable Object. |
-| Global budget | At most 6 fresh lookups a minute, 60 an hour and 300 a day, and 60 upstream requests a minute across all visitors. Answers come from a cache first (10 minutes for a player, 1 hour for "no such gamertag"), so repeats cost nothing. Edit the `LIMIT_*` vars in `wrangler.jsonc` to change them. |
-| Circuit breaker | A rejected sign-in stops all Halo calls for 30 minutes, a Halo 429 for 5, a Halo 5xx for 1. One player's own errors can never trip it. |
+| Global budget | At most 6 fresh lookups a minute, 60 an hour and 300 a day, and 60 upstream requests a minute across all visitors. Answers come from a cache first (30 minutes for a player, 1 hour for "no such gamertag"), so repeats cost nothing. The page opens on DaLuminar for every visitor, which alone is at most 48 fresh lookups a day. Edit the `LIMIT_*` vars in `wrangler.jsonc` to change them. |
+| Circuit breaker | A rejected sign-in stops all Halo calls for 30 minutes, a Halo 429 for 5, and a lookup where every playlist failed with a Halo 5xx for 1. A new `seed:worker` clears an open breaker at once. One player's own 401/403 never trips it. |
 | Egress | Tokens can only be sent to Microsoft, Xbox and Halo hosts. Avatars are proxied only from URLs that Halo returned, on the Xbox image host. |
 | Secrets | Only error codes are kept from Microsoft's replies. Nothing from an upstream error body, no token and no IP address reaches a response or a log. |
 | Kill switch | Set `LOOKUP_ENABLED` to `"false"` in `wrangler.jsonc` and redeploy. The page then falls back to the sample roster. |

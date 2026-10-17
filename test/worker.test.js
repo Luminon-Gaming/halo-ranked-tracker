@@ -1,10 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { Vault, BudgetError, AuthError, limitsFrom } from '../worker/vaultCore.js';
 import { parsePlayerRequest, avatarUrlAllowed, crossSiteBlocked, verifyTurnstile, sha256Hex } from '../worker/guard.js';
 import { createFixtureFetch, createFixtureSource } from '../src/fetch/fixtureSource.js';
-import config from '../config.json' with { type: 'json' };
+// readFileSync, not `import … with { type: 'json' }`, which needs Node 20.10 and the README promises 20.6.
+const config = JSON.parse(readFileSync(new URL('../config.json', import.meta.url), 'utf8'));
 
 // halo-infinite-api parks a rejected promise nobody awaits when a token fetch fails (see HaloApiSource.js); drop only those.
 process.on('unhandledRejection', (reason, promise) => {
@@ -296,7 +298,8 @@ test('through the real library, a rejected sign-in opens the breaker, stops retr
   const root = new URL('..', import.meta.url).href;
   const script = `
     import { Vault } from ${JSON.stringify(`${root}worker/vaultCore.js`)};
-    import config from ${JSON.stringify(`${root}config.json`)} with { type: 'json' };
+    import { readFileSync } from 'node:fs';
+    const config = JSON.parse(readFileSync(new URL(${JSON.stringify(`${root}config.json`)}), 'utf8'));
     process.on('unhandledRejection', (r, p) => { if (p?.constructor?.name !== 'ResolvablePromise') throw r; });
     const m = new Map();
     const storage = { get: async (k) => m.get(k), put: async (k, v) => void m.set(k, v), delete: async () => {}, list: async () => new Map() };
@@ -407,4 +410,64 @@ test('a single failing mode keeps the rest of the player and exposes only a code
   assert.equal(r.body.player.modes.arena.tier, 'Onyx');
   assert.equal(r.body.player.modes.snipers.status, 'error');
   assert.doesNotMatch(JSON.stringify(r), /sensitive-internal-detail/);
+});
+
+// --- re-seeding, secret hygiene, 5xx -------------------------------------------------------------------------------------
+test('a new seed clears an open breaker and the old account\'s Halo tokens, so re-seeding takes effect at once', async () => {
+  const c = clock();
+  const w = await chainWorld(c);
+  const storage = fakeStorage();
+  const mk = (env) => new Vault({ storage, env, fetchFn: w.fetchFn, config, now: c.now });
+  const first = mk(ENV);
+  assert.equal((await first.lookup('VoidHarbinger', 'ip')).status, 200);
+  assert.ok([...storage.m.keys()].some((k) => k.startsWith('halo:')), 'old account tokens are stored');
+  await storage.put('breaker', { code: 'auth', until: c.now() + 30 * 60_000 }); // e.g. "not seeded" before the first seed
+
+  const sameSeed = mk(ENV);
+  assert.equal((await sameSeed.lookup('Nova Kestrel', 'ip')).status, 503, 'same credentials: the breaker stays');
+
+  const reseeded = mk({ ...ENV, HALO_REFRESH_TOKEN_SEED: 'seed-for-another-account' });
+  await reseeded.ensureSeed();
+  assert.equal(await storage.get('breaker'), undefined);
+  assert.equal([...storage.m.keys()].some((k) => k.startsWith('halo:')), false, 'old Halo tokens are gone');
+  const calls = w.msBodies.length;
+  assert.equal((await reseeded.lookup('Nova Kestrel', 'ip')).status, 200);
+  assert.equal(new URLSearchParams(w.msBodies[calls]).get('refresh_token'), 'seed-for-another-account');
+});
+
+test('secrets with a trailing newline are trimmed before use', async () => {
+  const c = clock();
+  const w = await chainWorld(c);
+  const vault = new Vault({ storage: fakeStorage(), env: { HALO_AZURE_CLIENT_ID: 'client-id\n', HALO_REFRESH_TOKEN_SEED: 'seed-refresh-token\n' }, fetchFn: w.fetchFn, config, now: c.now });
+  await vault.msAccessToken();
+  const body = new URLSearchParams(w.msBodies[0]);
+  assert.equal(body.get('client_id'), 'client-id');
+  assert.equal(body.get('refresh_token'), 'seed-refresh-token');
+  // And the trimmed and untrimmed forms of one secret count as the same credentials.
+  const a = new Vault({ storage: fakeStorage(), env: ENV, config });
+  const b = new Vault({ storage: fakeStorage(), env: { ...ENV, HALO_REFRESH_TOKEN_SEED: `${ENV.HALO_REFRESH_TOKEN_SEED}\n` }, config });
+  await a.ensureSeed();
+  await b.ensureSeed();
+  assert.equal(await a.storage.get('seedHash'), await b.storage.get('seedHash'));
+});
+
+test('Halo failing with 5xx on every mode pauses lookups briefly instead of hammering it', async () => {
+  const c = clock();
+  const down = {
+    getCurrentCsrSeason: async () => 'CsrSeason13-3',
+    getUser: async () => ({ xuid: '1', gamertag: 'Zed', gamerpic: null }),
+    getUsers: async () => [],
+    getPlaylistCsr: async () => { throw Object.assign(new Error('x'), { response: { status: 503 } }); },
+  };
+  let calls = 0;
+  const vault = new Vault({ storage: fakeStorage(), env: ENV, config, now: c.now, sourceFactory: () => ({ ...down, getUser: async (...a) => (calls++, down.getUser(...a)) }) });
+  const r = await vault.lookup('Zed', 'ip');
+  assert.equal(r.status, 503);
+  assert.equal((await vault.storage.get('breaker')).code, 'halo_5xx');
+  const n = calls;
+  assert.equal((await vault.lookup('Other', 'ip')).status, 503);
+  assert.equal(calls, n, 'no further Halo calls while paused');
+  c.advance(61_000);
+  await vault.lookup('Other', 'ip');
+  assert.ok(calls > n, 'tries again after a minute');
 });
