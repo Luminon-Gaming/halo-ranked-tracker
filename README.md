@@ -23,7 +23,7 @@ A read-only copy of this preview is also deployed on Cloudflare Workers (see [De
 
 Type a gamertag in the search box (`Name` or `Name#1234`) and press Enter. The server runs the normal pipeline for that one player, caches the answer for 5 minutes, and never touches `data/ranks.json`. The last player and the 8 most recent lookups are kept in your browser's `localStorage` (key `lookup-prefs`), and a `?player=Name` link wins over the saved one. The **Roster** button switches to the daily `accounts.txt` list, which is optional now.
 
-Lookups need the sign-in from `npm run auth`, so they only work where `npm start` runs. The hosted preview is static files with no server code, so there the search box just filters the sample roster and says so.
+Locally, lookups use the sign-in from `npm run auth`. On the hosted site they use a dedicated account's token held by the Worker (see [Hosted lookup](#hosted-lookup-dedicated-account)); when that isn't set up, or a host has no lookup endpoint at all, the search box filters the sample roster and says why.
 
 ## Prerequisites
 
@@ -148,14 +148,48 @@ Unknown keys log a warning. A value of the wrong type stops startup with an erro
 
 ## Deploying the preview
 
-The hosted copy is a static, read-only dashboard built from the committed **sample** data. It never talks to Halo, and sign-in and fetching stay on your machine. It is served by Cloudflare Workers static assets, with no Worker code (`wrangler.jsonc`).
+The hosted copy is the dashboard built from the committed **sample** roster, served by Cloudflare Workers static assets (`wrangler.jsonc`), plus the live player lookup described below. The daily roster fetch and your own sign-in stay on your machine.
 
 ```bash
 npx wrangler login      # once
 npm run deploy          # rebuilds .preview/ (scripts/build-preview.js), then wrangler deploy
+npm run deploy:staging  # same, to a separate Worker named halo-ranked-tracker-staging
 ```
 
-`scripts/build-preview.js` also writes `.preview/_redirects` (`/api/ranks` → `/api/ranks.json`) and `.preview/_headers` (no-cache for `/api/*`, one week for `/tiers/*`). To try it locally first: `node scripts/build-preview.js && npx wrangler dev`.
+`scripts/build-preview.js` also writes `.preview/_redirects` (`/api/ranks` → `/api/ranks.json`) and `.preview/_headers` (security headers and a CSP on everything, no-cache for `/api/*`, one week for `/tiers/*`). To try it locally first: `node scripts/build-preview.js && npx wrangler dev`.
+
+## Hosted lookup (dedicated account)
+
+Visitors of the hosted site can look up any gamertag. Halo has no public API, so every lookup is made by **one Xbox account that you provide** and that the Worker signs in as. Use a **dedicated account** that you can afford to lose: Microsoft or Halo may rate-limit or ban an account that serves public traffic, and the terms for automated access are not clear.
+
+How it fits together: the Azure app from [Azure app registration](#azure-app-registration-one-time-about-5-minutes) is the OAuth client every sign-in goes through, so the Worker reuses the same client ID and no second app is needed. Its refresh grant needs no client secret because the app is a public client. The refresh token of the dedicated account is stored as a Worker secret. A Durable Object (`HaloVault`) is the only code that uses it: it refreshes and rotates the token, runs the Halo calls, and enforces the limits below.
+
+**One-time setup (you do these; the steps involve your accounts and secrets):**
+
+1. Create a new Microsoft account for this, then create its Xbox profile at <https://www.xbox.com> and open Halo Infinite once (or sign in to Halo Waypoint). Without an Xbox profile the Xbox sign-in step fails with a 401.
+2. Deploy a test Worker first: `npm run deploy:staging`.
+3. Upload the account's token (a private browser window helps if you are signed in to another Microsoft account):
+   ```bash
+   npm run seed:worker -- --name halo-ranked-tracker-staging --expect dedicated@outlook.com
+   openssl rand -hex 32 | npx wrangler secret put IP_SALT --name halo-ranked-tracker-staging
+   ```
+   `seed:worker` signs in with a cache of its own (your normal `.cache/` sign-in is not touched), refuses to upload unless the signed-in address equals `--expect`, passes the token to `wrangler secret put` on stdin, and deletes its local copy straight away. Never reuse that token elsewhere: it rotates, so a second copy would be invalidated. To re-seed, run the command again.
+4. Open the staging URL and look up a gamertag. When it works, repeat steps 3 and 2 for the real Worker (`--name halo-ranked-tracker`, then `npm run deploy`).
+5. Recommended: create a Turnstile widget in the Cloudflare dashboard and set `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET` with `wrangler secret put`. With both set, every lookup needs a passed challenge. Also consider a WAF rate-limiting rule on `/api/player` in the dashboard.
+
+**Protections**
+
+| Layer | What it does |
+|---|---|
+| Input | Only `GET /api/player?gamertag=` with a valid gamertag (400 otherwise). Input is never echoed back. Cross-site requests and foreign `Origin`s are refused, and no CORS headers are sent. |
+| Per visitor | Workers rate limits (6 per 10 s and 20 per minute, per Cloudflare location, keyed on the connecting IP), plus 10 fresh lookups per hour per hashed IP in the Durable Object. |
+| Global budget | At most 6 fresh lookups a minute, 60 an hour and 300 a day, and 60 upstream requests a minute across all visitors. Answers come from a cache first (10 minutes for a player, 1 hour for "no such gamertag"), so repeats cost nothing. Edit the `LIMIT_*` vars in `wrangler.jsonc` to change them. |
+| Circuit breaker | A rejected sign-in stops all Halo calls for 30 minutes, a Halo 429 for 5, a Halo 5xx for 1. One player's own errors can never trip it. |
+| Egress | Tokens can only be sent to Microsoft, Xbox and Halo hosts. Avatars are proxied only from URLs that Halo returned, on the Xbox image host. |
+| Secrets | Only error codes are kept from Microsoft's replies. Nothing from an upstream error body, no token and no IP address reaches a response or a log. |
+| Kill switch | Set `LOOKUP_ENABLED` to `"false"` in `wrangler.jsonc` and redeploy. The page then falls back to the sample roster. |
+
+If lookups stop working with "unavailable", the dedicated account's sign-in was rejected: run `seed:worker` again.
 
 ## Security
 
@@ -173,7 +207,8 @@ public/         dashboard (index.html, styles.css, app.js, tiers/)
 data/           ranks.json (sample committed), xuid-cache.json, assets/
 test/           node:test suites + fixtures
 scripts/        build-preview.js (static preview for Cloudflare Workers)
-wrangler.jsonc  Workers static-assets config for the preview
+worker/         Cloudflare Worker: index.js (routes), guard.js (request checks), vaultCore.js (tokens, budgets, cache)
+wrangler.jsonc  Workers config: static assets, the HaloVault Durable Object, rate limits, LIMIT_* vars
 ```
 
 See `ASSUMPTIONS.md` for the decisions that still need checking against a live response.
