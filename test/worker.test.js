@@ -160,8 +160,8 @@ test('daily budget stops fresh lookups for the rest of the day', async () => {
 
 test('limits come from env and ignore garbage', () => {
   assert.equal(limitsFrom({ LIMIT_UNCACHED_PER_MINUTE: '3' }).uncachedPerMinute, 3);
-  assert.equal(limitsFrom({ LIMIT_UNCACHED_PER_MINUTE: 'abc' }).uncachedPerMinute, 6);
-  assert.equal(limitsFrom({ LIMIT_UNCACHED_PER_MINUTE: '-5' }).uncachedPerMinute, 6);
+  assert.equal(limitsFrom({ LIMIT_UNCACHED_PER_MINUTE: 'abc' }).uncachedPerMinute, 30);
+  assert.equal(limitsFrom({ LIMIT_UNCACHED_PER_MINUTE: '-5' }).uncachedPerMinute, 30);
   assert.equal(limitsFrom({ LIMIT_UNCACHED_PER_IP_PER_HOUR: '4' }).uncachedPerIpPerHour, 4);
 });
 
