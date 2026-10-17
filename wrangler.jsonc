@@ -22,11 +22,12 @@
   ],
   "vars": {
     "LOOKUP_ENABLED": "true", // set to "false" and redeploy to switch lookups off
-    "LIMIT_UNCACHED_PER_MINUTE": "6",
-    "LIMIT_UNCACHED_PER_HOUR": "60",
-    "LIMIT_UNCACHED_PER_DAY": "300",
-    "LIMIT_UNCACHED_PER_IP_PER_HOUR": "10",
-    "LIMIT_UPSTREAM_PER_MINUTE": "60"
+    "LIMIT_UNCACHED_PER_MINUTE": "30",
+    "LIMIT_UNCACHED_PER_HOUR": "600",
+    "LIMIT_UNCACHED_PER_DAY": "3000",
+    "LIMIT_UNCACHED_PER_IP_PER_HOUR": "30",
+    "LIMIT_UNCACHED_PER_ACCOUNT_PER_HOUR": "60",
+    "LIMIT_UPSTREAM_PER_MINUTE": "300"
   },
   "observability": { "enabled": true }
 }

@@ -61,6 +61,18 @@ export function parsePlayerRequest(request, env = {}) {
   return { gamertag };
 }
 
+/**
+ * The visitor's Microsoft access token from `Authorization: Bearer …`.
+ * Returns null when the header is absent, { token } when it is well-formed, { invalid: true } otherwise.
+ * Only the shape is checked here; Xbox is the one that decides whether the token is any good.
+ */
+export function bearerToken(request) {
+  const header = request.headers.get('authorization');
+  if (header == null) return null;
+  const m = /^Bearer ([\x21-\x7e]{20,4096})$/.exec(header);
+  return m ? { token: m[1] } : { invalid: true };
+}
+
 /** Verifies a Cloudflare Turnstile token. Only called when TURNSTILE_SECRET is set. */
 export async function verifyTurnstile({ token, secret, ip, fetchFn = fetch }) {
   if (!token || token.length > 2048) return false;

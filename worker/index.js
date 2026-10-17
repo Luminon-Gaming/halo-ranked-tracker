@@ -3,7 +3,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import config from '../config.json';
 import { Vault } from './vaultCore.js';
-import { json, fail, clientIp, sha256Hex, crossSiteBlocked, parsePlayerRequest, verifyTurnstile } from './guard.js';
+import { json, fail, clientIp, sha256Hex, crossSiteBlocked, parsePlayerRequest, bearerToken, verifyTurnstile } from './guard.js';
 
 // halo-infinite-api leaves a rejected promise nobody awaits when a token fetch fails; the caller already got the error.
 if (typeof addEventListener === 'function') {
@@ -20,8 +20,11 @@ export class HaloVault extends DurableObject {
     // A new `wrangler secret put` restarts this object with the new env; adopt it before any request is served.
     ctx.blockConcurrencyWhile(() => this.vault.ensureSeed());
   }
-  lookup(gamertag, ipHash) {
-    return this.vault.lookup(gamertag, ipHash);
+  lookup(gamertag, ipHash, user = null) {
+    return this.vault.lookup(gamertag, ipHash, user);
+  }
+  cached(gamertag) {
+    return this.vault.cached(gamertag);
   }
   avatar(xuid) {
     return this.vault.avatar(xuid);
@@ -29,10 +32,13 @@ export class HaloVault extends DurableObject {
 }
 
 const vaultOf = (env) => env.VAULT.get(env.VAULT.idFromName('main'));
+const ipHashOf = async (ip, env) => (await sha256Hex(`${ip}|${String(env.IP_SALT ?? '').trim()}`)).slice(0, 16);
 
 async function handlePlayer(request, env) {
   const parsed = parsePlayerRequest(request, env);
   if (parsed.response) return parsed.response;
+  const auth = bearerToken(request);
+  if (auth?.invalid) return fail(401, 'signin_required', 'Sign in again to look players up.');
   const ip = clientIp(request);
 
   // Cheap per-visitor limits first (per Cloudflare location, permissive by design); the strict budgets are in the vault.
@@ -46,7 +52,11 @@ async function handlePlayer(request, env) {
     if (!ok) return fail(403, 'challenge_failed', 'Verification failed. Reload the page and try again.');
   }
 
-  const out = await vaultOf(env).lookup(parsed.gamertag, (await sha256Hex(`${ip}|${String(env.IP_SALT ?? '').trim()}`)).slice(0, 16));
+  const vault = vaultOf(env);
+  let out;
+  if (auth) out = await vault.lookup(parsed.gamertag, await ipHashOf(ip, env), auth); // the visitor's own sign-in
+  else if (String(env.HALO_REFRESH_TOKEN_SEED ?? '').trim()) out = await vault.lookup(parsed.gamertag, await ipHashOf(ip, env)); // dedicated account
+  else out = await vault.cached(parsed.gamertag); // signed out: only what someone signed in has already looked up
   const headers = {};
   if (out.retryAfter) headers['Retry-After'] = String(out.retryAfter);
   // Found players and "no such gamertag" may sit in the visitor's browser briefly; failures never do.
@@ -77,7 +87,8 @@ export default {
       const avatar = /^\/api\/avatar\/(\d{1,20})$/.exec(pathname);
       if (avatar) return await handleAvatar(request, env, avatar[1]);
       // The page reads this to learn whether to show the Turnstile challenge. The site key is public by design.
-      if (pathname === '/api/config') return json(200, { turnstileSiteKey: String(env.TURNSTILE_SECRET ?? '').trim() && String(env.TURNSTILE_SITE_KEY ?? '').trim() ? String(env.TURNSTILE_SITE_KEY).trim() : null, lookup: env.LOOKUP_ENABLED !== 'false' }, { 'Cache-Control': 'no-cache' });
+      // An OAuth client ID is public by design (it is in every sign-in URL), so it is safe to hand to the page.
+      if (pathname === '/api/config') return json(200, { turnstileSiteKey: String(env.TURNSTILE_SECRET ?? '').trim() && String(env.TURNSTILE_SITE_KEY ?? '').trim() ? String(env.TURNSTILE_SITE_KEY).trim() : null, lookup: env.LOOKUP_ENABLED !== 'false', signin: String(env.HALO_AZURE_CLIENT_ID ?? '').trim() ? { clientId: String(env.HALO_AZURE_CLIENT_ID).trim() } : null }, { 'Cache-Control': 'no-cache' });
       return env.ASSETS.fetch(request);
     } catch (e) {
       console.error(`[worker] ${e?.name ?? 'Error'}`); // name only: never the message, which could carry request data

@@ -11,15 +11,18 @@ const TOKEN_URL = 'https://login.microsoftonline.com/consumers/oauth2/v2.0/token
 const SCOPE = 'XboxLive.signin offline_access';
 // The only hosts this account's tokens may ever be sent to.
 const EGRESS_OK = /(^|\.)(halowaypoint\.com|xboxlive\.com|microsoftonline\.com)$/;
+// A signed-in visitor's token is only ever sent to Xbox and Halo: the Worker never talks to Microsoft on their behalf.
+const EGRESS_USER = /(^|\.)(halowaypoint\.com|xboxlive\.com)$/;
 const quiet = { info() {}, warn() {}, error() {} };
 const MIN = 60_000;
 
 export const DEFAULT_LIMITS = {
-  uncachedPerMinute: 6, // fresh Halo lookups, all visitors together
-  uncachedPerHour: 60,
-  uncachedPerDay: 300,
-  uncachedPerIpPerHour: 10,
-  upstreamPerMinute: 60, // every request this account sends to Microsoft/Xbox/Halo
+  uncachedPerMinute: 30, // fresh Halo lookups, all visitors together: these protect the Worker, each visitor spends their own Halo allowance
+  uncachedPerHour: 600,
+  uncachedPerDay: 3000,
+  uncachedPerIpPerHour: 30,
+  uncachedPerAccountPerHour: 60, // per sign-in token (hashed); tokens change hourly, so this only bounds one session
+  upstreamPerMinute: 300, // every request the Worker sends to Microsoft/Xbox/Halo
   okTtlSec: 1800, // a found player is reused for 30 minutes: CSR only moves after matches, and the default player loads on every visit
   notFoundTtlSec: 3600, // so is "no such gamertag", which blunts name enumeration
   cacheMax: 300,
@@ -61,6 +64,7 @@ function cleanErrors(player) {
 }
 
 const UNAVAILABLE = { error: 'unavailable', message: 'Player lookup is unavailable right now. Try again later.' };
+const SIGN_IN = { error: 'signin_required', message: 'Sign in with a Microsoft account that has an Xbox profile to look players up.' };
 
 export class Vault {
   constructor({ storage, env = {}, fetchFn = fetch, config, now = Date.now, log = quiet, sourceFactory = null }) {
@@ -109,7 +113,7 @@ export class Vault {
   }
 
   /** null when a fresh lookup may start, else { retryAfter } in seconds. Counts the lookup when admitted. */
-  async admit(ipHash) {
+  async admit(ipHash, accountHash = null) {
     const L = this.limits;
     const checks = [
       ['min', MIN, L.uncachedPerMinute, 60],
@@ -117,6 +121,7 @@ export class Vault {
       ['day', 24 * 60 * MIN, L.uncachedPerDay, 3600],
       [`ip:${ipHash}`, 60 * MIN, L.uncachedPerIpPerHour, 900],
     ];
+    if (accountHash) checks.push([`acct:${accountHash}`, 60 * MIN, L.uncachedPerAccountPerHour, 900]);
     for (const [scope, win, max, retry] of checks) if ((await this.peek(scope, win)) >= max) return { retryAfter: retry };
     for (const [scope, win] of checks) await this.bump(scope, win);
     return null;
@@ -193,9 +198,9 @@ export class Vault {
   }
 
   // --- upstream --------------------------------------------------------------------------------------------------
-  async guardedFetch(input, init) {
+  async guardedFetch(input, init, allowed = EGRESS_OK) {
     const url = new URL(typeof input === 'string' ? input : (input.url ?? String(input)));
-    if (url.protocol !== 'https:' || !EGRESS_OK.test(url.hostname)) throw new Error(`blocked egress to ${url.hostname}`);
+    if (url.protocol !== 'https:' || !allowed.test(url.hostname)) throw new Error(`blocked egress to ${url.hostname}`);
     if ((await this.bump('up', MIN)) > this.limits.upstreamPerMinute) throw new BudgetError(60);
     return this.fetchFn(input, init);
   }
@@ -212,36 +217,67 @@ export class Vault {
     return this._source;
   }
 
+  /**
+   * A visitor's own sign-in. A fresh source and an in-memory token cache are built per request, so one visitor's
+   * Xbox/Halo tokens are never kept, never written to storage and never used for anybody else.
+   */
+  userSource(token) {
+    if (this.sourceFactory) return this.sourceFactory(this, { token });
+    const fetchFn = (i, o) => this.guardedFetch(i, o, EGRESS_USER);
+    const mem = new Map();
+    const persister = {
+      load: async (name) => mem.get(name) ?? null,
+      save: async (name, value) => void mem.set(name, JSON.parse(JSON.stringify(value))),
+      clear: async (name) => void mem.delete(name),
+    };
+    const provider = new AutoTokenProvider(async () => token, persister, fetchFn);
+    return new HaloClientSource({ client: new HaloInfiniteClient(provider, fetchFn), log: quiet });
+  }
+
   // --- lookups ---------------------------------------------------------------------------------------------------
-  /** @returns {{ status:number, body:object, retryAfter?:number }} */
-  async lookup(gamertag, ipHash = 'none') {
+  /** Only what is already cached: lets a signed-out visitor see public data without anybody's token being used. */
+  async cached(gamertag) {
+    const hit = await this.storage.get(`c:${gamertag.toLowerCase()}`);
+    if (hit && hit.until > this.now()) return { status: hit.status, body: hit.body };
+    return { status: 401, body: SIGN_IN };
+  }
+
+  /**
+   * @param {{ token: string }|null} user the visitor's Microsoft access token, or null to use the dedicated account
+   * @returns {{ status:number, body:object, retryAfter?:number }}
+   */
+  async lookup(gamertag, ipHash = 'none', user = null) {
     const key = gamertag.toLowerCase();
     const t = this.now();
-    await this.ensureSeed();
+    // Hashed so the token itself is never a storage key or log line; shared only by identical sign-ins.
+    const account = user ? (await sha256Hex(user.token)).slice(0, 16) : null;
+    if (!user) await this.ensureSeed();
     await this.prune(t).catch(() => {});
     const hit = await this.storage.get(`c:${key}`);
     if (hit && hit.until > t) return { status: hit.status, body: hit.body };
-    if (this.inflight.has(key)) return this.inflight.get(key);
+    const flight = account ? `${key}|${account}` : key;
+    if (this.inflight.has(flight)) return this.inflight.get(flight);
     // Registered synchronously, right after the check above: anything awaited before this point would let
     // simultaneous requests for one name each pass the check and each spend budget.
-    const run = this.start(gamertag, key, ipHash, t).finally(() => this.inflight.delete(key));
-    this.inflight.set(key, run);
+    const run = this.start(gamertag, key, ipHash, t, user, account).finally(() => this.inflight.delete(flight));
+    this.inflight.set(flight, run);
     return run;
   }
 
-  async start(gamertag, key, ipHash, t) {
+  async start(gamertag, key, ipHash, t, user, account) {
     const br = await this.storage.get('breaker');
-    if (br && br.until > t) return { status: 503, body: UNAVAILABLE, retryAfter: Math.ceil((br.until - t) / 1000) };
-    const busy = await this.admit(ipHash);
+    // The dedicated account's sign-in breaker says nothing about a visitor's own sign-in.
+    if (br && br.until > t && !(user && br.code === 'auth')) return { status: 503, body: UNAVAILABLE, retryAfter: Math.ceil((br.until - t) / 1000) };
+    const busy = await this.admit(ipHash, account);
     if (busy) return { status: 429, body: { error: 'busy', message: 'Too many lookups right now. Try again shortly.' }, retryAfter: busy.retryAfter };
-    return this.run(gamertag, key);
+    return this.run(gamertag, key, user);
   }
 
-  async run(gamertag, key) {
+  async run(gamertag, key, user = null) {
     try {
       const result = await runFetch({
         config: this.config,
-        source: this.source(),
+        source: user ? this.userSource(user.token) : this.source(),
         accounts: [{ gamertag }],
         xuidCache: {},
         log: quiet,
@@ -253,7 +289,7 @@ export class Vault {
         return this.remember(key, 404, { error: 'gamertag_not_found', message: `No player found for "${gamertag}".` }, this.limits.notFoundTtlSec);
       }
       // Only a 429 means "slow down" for everyone. A 401/403 on one player's data must not be able to lock everybody out.
-      if (/HTTP 429/.test(JSON.stringify(player ?? {}))) return this.fromUpstreamStatus();
+      if (/HTTP 429/.test(JSON.stringify(player ?? {}))) return this.fromUpstreamStatus(user);
       // The pipeline folds failures into the player record; a record with nothing usable is a failed lookup, not data.
       if (!player || player.error) {
         // Every mode failing with a Halo 5xx means Halo is down: pause briefly instead of hammering it.
@@ -268,7 +304,7 @@ export class Vault {
       const body ={ schemaVersion: 1, fetchedAt: result.data.lastUpdated, csrSeasonId: result.data.csrSeasonId, modes: result.data.modes, player };
       return this.remember(key, 200, body, this.limits.okTtlSec);
     } catch (e) {
-      return this.fromError(e);
+      return this.fromError(e, user);
     }
   }
 
@@ -277,19 +313,24 @@ export class Vault {
     return { status, body };
   }
 
-  async fromUpstreamStatus() {
-    await this.openBreaker('halo_429', 5 * MIN);
-    return { status: 503, body: UNAVAILABLE, retryAfter: 300 };
+  // Whether Halo limits per account or per Cloudflare egress address is unknown. A visitor's 429 therefore pauses
+  // everyone only briefly; the dedicated account's 429 pauses for five minutes.
+  async fromUpstreamStatus(user = null) {
+    const sec = user ? 60 : 300;
+    await this.openBreaker('halo_429', sec * 1000);
+    return { status: 503, body: UNAVAILABLE, retryAfter: sec };
   }
 
-  async fromError(e) {
+  async fromError(e, user = null) {
     if (e instanceof BudgetError) return { status: 429, body: { error: 'busy', message: 'Too many lookups right now. Try again shortly.' }, retryAfter: e.retryAfter };
     if (isAuthError(e)) {
+      // A visitor's rejected token is that visitor's problem: tell them to sign in again, and never trip the breaker.
+      if (user) return { status: 401, body: SIGN_IN };
       await this.openBreaker('auth', 30 * MIN);
       return { status: 503, body: UNAVAILABLE, retryAfter: 1800 };
     }
     const status = statusOf(e);
-    if (status === 429) return this.fromUpstreamStatus();
+    if (status === 429) return this.fromUpstreamStatus(user);
     if (status >= 500) {
       await this.openBreaker('halo_5xx', MIN);
       return { status: 503, body: UNAVAILABLE, retryAfter: 60 };
