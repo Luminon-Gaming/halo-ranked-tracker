@@ -158,6 +158,20 @@ npm run deploy:staging  # same, to a separate Worker named halo-ranked-tracker-s
 
 `scripts/build-preview.js` also writes `.preview/_redirects` (`/api/ranks` → `/api/ranks.json`) and `.preview/_headers` (security headers and a CSP on everything, no-cache for `/api/*`, one week for `/tiers/*`). To try it locally first: `node scripts/build-preview.js && npx wrangler dev`.
 
+## Hosted lookup (sign in with your own account)
+
+On the hosted site a visitor can sign in with their own Microsoft account, and lookups are then made as that visitor. The Worker keeps nothing of theirs: the page signs in with the authorization-code flow with PKCE (`public/auth.js`, no library), keeps the tokens in `sessionStorage` only, and sends the short-lived access token to `/api/player` as `Authorization: Bearer`. For that one request the Worker builds a fresh token chain in memory (Xbox user token → XSTS → Halo Spartan token), looks the player up and forgets everything. Tokens are only ever sent to Xbox and Halo hosts. Players that someone has already looked up (cached 30 minutes, 1 hour for "no such gamertag") are also shown to signed-out visitors, since that data is public. A token that Xbox rejects gives a 401 for that visitor alone; it never pauses lookups for anyone else.
+
+**One-time setup (yours; it changes your Azure app):**
+
+1. In the Azure portal open the app → **Authentication** → **Add a platform** → **Single-page application**, and add these redirect URIs (they must match exactly, trailing slash included): `http://localhost:8787/`, your staging URL and your real URL, e.g. `https://halo-ranked-tracker.<account>.workers.dev/`. Microsoft only allows the browser to redeem the code cross-origin for redirect URIs of this platform type. The existing *Mobile and desktop* `http://localhost` entry stays for `npm run auth`.
+2. Tell the Worker the client ID (it is public by design; it appears in every sign-in URL): `npx wrangler secret put HALO_AZURE_CLIENT_ID` (add `--name halo-ranked-tracker-staging` for staging). For a local run put `HALO_AZURE_CLIENT_ID=<id>` in `.dev.vars` (git-ignored).
+3. Try it locally first: `node scripts/build-preview.js && npx wrangler@4.151.0 dev --port 8787`, open <http://localhost:8787>, click **Sign in with Microsoft** with the account you play Halo on, and look up DaLuminar. Compare the result with `npm start`.
+
+The account must have an Xbox profile. With none, Xbox rejects the token and the page asks for a sign-in again.
+
+**What visitors consent to.** Microsoft's screen says the app can sign in to Xbox as them (`XboxLive.signin`). This app only uses it to read Halo CSR, but the permission is that broad. Halo's terms for automated access are unclear, so a visitor's own account carries that risk.
+
 ## Hosted lookup (dedicated account)
 
 Visitors of the hosted site can look up any gamertag. Halo has no public API, so every lookup is made by **one Xbox account that you provide** and that the Worker signs in as. Use a **dedicated account** that you can afford to lose: Microsoft or Halo may rate-limit or ban an account that serves public traffic, and the terms for automated access are not clear.
