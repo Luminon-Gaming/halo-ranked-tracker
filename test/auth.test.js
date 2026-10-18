@@ -85,6 +85,16 @@ test('a matching return redeems the code with the verifier, keeps tokens in sess
   assert.equal(nav.replaced, '/');
 });
 
+test('the page never returns to another origin, even if the stored return path was tampered with', async () => {
+  for (const bad of ['//evil.example/x', '/\\evil.example', 'https://evil.example/', 42]) {
+    await beginSignIn('cid');
+    const pending = JSON.parse(session.get('auth-pending'));
+    session.set('auth-pending', JSON.stringify({ ...pending, returnTo: bad }));
+    await comeBack(`?code=the-code&state=${pending.state}`);
+    assert.equal(nav.replaced, '/', String(bad));
+  }
+});
+
 test('a wrong state is refused without contacting Microsoft', async () => {
   await beginSignIn('cid');
   await comeBack('?code=the-code&state=forged');

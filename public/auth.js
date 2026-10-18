@@ -101,7 +101,9 @@ export async function finishRedirect() {
     }
   }
   if (notice) store.set(NOTICE, notice);
-  location.replace(pending?.returnTo?.startsWith('/') ? pending.returnTo : '/');
+  // Same-site paths only: "//host" and "/\host" would be read as another origin.
+  const back = pending?.returnTo;
+  location.replace(typeof back === 'string' && /^\/(?![/\\])/.test(back) ? back : '/');
 }
 
 let refreshing = null;
