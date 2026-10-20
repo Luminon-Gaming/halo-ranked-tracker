@@ -19,9 +19,36 @@ await fs.writeFile(path.join(out, 'api', 'ranks.json'), JSON.stringify(data));
 
 // Workers static assets read these two files (they are not served). The dashboard fetches /api/ranks.
 await fs.writeFile(path.join(out, '_redirects'), '/api/ranks /api/ranks.json 200\n');
+// Headers from every matching rule are added together. The CSP allows only this site, Cloudflare's Turnstile widget and
+// Microsoft's token endpoint (the page redeems its own sign-in code there).
+const CSP = [
+  "default-src 'none'",
+  "script-src 'self' https://challenges.cloudflare.com",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "connect-src 'self' https://login.microsoftonline.com",
+  'frame-src https://challenges.cloudflare.com',
+  "base-uri 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
 await fs.writeFile(
   path.join(out, '_headers'),
-  ['/api/*', '  Cache-Control: no-cache', '', '/tiers/*', '  Cache-Control: public, max-age=604800', ''].join('\n'),
+  [
+    '/*',
+    '  X-Content-Type-Options: nosniff',
+    '  X-Frame-Options: DENY',
+    '  Referrer-Policy: no-referrer',
+    '  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()',
+    `  Content-Security-Policy: ${CSP}`,
+    '',
+    '/api/*',
+    '  Cache-Control: no-cache',
+    '',
+    '/tiers/*',
+    '  Cache-Control: public, max-age=604800',
+    '',
+  ].join('\n'),
 );
 
 // Official tier icons are public; if the download fails the dashboard draws its built-in badges.

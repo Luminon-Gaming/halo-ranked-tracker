@@ -13,7 +13,9 @@
     "discover": "node src/cli/discover.js",
     "fetch": "node src/cli/fetch.js",
     "test": "node --test test/*.test.js",
-    "deploy": "node scripts/build-preview.js && npx wrangler@4.151.0 deploy"
+    "deploy": "node scripts/build-preview.js && npx wrangler@4.151.0 deploy",
+    "deploy:staging": "node scripts/build-preview.js && npx wrangler@4.151.0 deploy --name halo-ranked-tracker-staging",
+    "seed:worker": "node src/cli/seedWorker.js"
   },
   "dependencies": {
     "@azure/msal-node": "7.0.1",
