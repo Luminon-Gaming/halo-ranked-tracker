@@ -157,9 +157,9 @@ npm run deploy          # rebuilds .preview/ (scripts/build-preview.js), then wr
 ### CI and automatic deploys
 
 - **CI** (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main`: `npm ci`, `npm test`, then `node scripts/build-preview.js`. It needs no secrets. The repo has no lint script.
-- **Deploy** (`.github/workflows/deploy.yml`) runs on pushes to `main` and manually (Actions → Deploy preview → Run workflow). It builds the preview and runs `wrangler deploy` (wrangler 4.151.0, the same as `npm run deploy`) through `cloudflare/wrangler-action`. Afterwards it requests the workers.dev URL and `/api/ranks`, and fails unless both return 200.
+- **Deploy** (`.github/workflows/deploy.yml`) runs on pushes to `main` and manually (Actions → Deploy preview → Run workflow). It builds the preview and runs `wrangler deploy` (wrangler 4.151.0, the same as `npm run deploy`) through `cloudflare/wrangler-action`. Afterwards it requests the workers.dev URL and `/api/ranks`, and fails unless both return 200. The URL comes from the action's `deployment-url` output, falling back to https://halo-ranked-tracker.boycepro-account.workers.dev if the action returns none.
 
-One-time setup: create a GitHub environment named `production` (Settings → Environments) and add these secrets to it:
+Setup: the GitHub environment `production` (Settings → Environments) needs these secrets (already configured for this repo):
 
 | Secret | Value |
 | --- | --- |

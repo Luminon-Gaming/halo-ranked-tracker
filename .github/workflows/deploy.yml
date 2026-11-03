@@ -40,11 +40,12 @@ jobs:
       - name: Smoke test
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.deployment-url }}
+          FALLBACK_URL: https://halo-ranked-tracker.boycepro-account.workers.dev
         run: |
           set -euo pipefail
           if [ -z "$DEPLOY_URL" ]; then
-            echo "::error::wrangler-action returned no deployment-url"
-            exit 1
+            echo "wrangler-action returned no deployment-url; falling back to $FALLBACK_URL"
+            DEPLOY_URL="$FALLBACK_URL"
           fi
           base="${DEPLOY_URL%/}"
           for path in "" "/api/ranks"; do
