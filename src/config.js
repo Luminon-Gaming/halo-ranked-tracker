@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isWindowList } from './rotation.js';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -19,7 +20,8 @@ const SCHEMA = {
   schedule: { cron: 'string', timezone: 'string', fetchOnBootIfStaleHours: 'number' },
   throttle: { concurrency: 'integer', delayMs: 'number', maxRetries: 'integer', baseBackoffMs: 'number', csrBatchSize: 'integer' },
   playlists: { arena: 'string|null', doubles: 'string|null', slayer: 'string|null', snipers: 'string|null' },
-  rotation: { snipers: 'boolean' },
+  rotation: { snipers: [true, false, 'auto'] },
+  rotationSchedule: { snipers: 'windows' },
   emblemSource: ['gamerpic', 'spartan-emblem'],
   accentColor: 'string',
   accountsFile: 'string',
@@ -32,7 +34,17 @@ export const DEFAULTS = {
   schedule: { cron: '0 6 * * *', timezone: 'America/New_York', fetchOnBootIfStaleHours: 24 },
   throttle: { concurrency: 2, delayMs: 500, maxRetries: 4, baseBackoffMs: 1000, csrBatchSize: 25 },
   playlists: { arena: null, doubles: null, slayer: null, snipers: null },
-  rotation: { snipers: true },
+  rotation: { snipers: 'auto' },
+  // Official ranked rotational schedule (Halo Support "Halo Infinite Multiplayer Playlists", updated Aug 25, 2026).
+  // Inclusive local dates in schedule.timezone. Add new windows here when Halo announces them.
+  rotationSchedule: {
+    snipers: [
+      { from: '2025-11-18', to: '2025-12-15' },
+      { from: '2026-03-31', to: '2026-04-27' },
+      { from: '2026-09-01', to: '2026-11-02' },
+      { from: '2027-02-02', to: '2027-03-01' },
+    ],
+  },
   emblemSource: 'gamerpic',
   accentColor: '#2ee6a6',
   accountsFile: 'accounts.txt',
@@ -41,6 +53,7 @@ export const DEFAULTS = {
 
 function typeOk(spec, value) {
   if (Array.isArray(spec)) return spec.includes(value);
+  if (spec === 'windows') return isWindowList(value);
   return spec.split('|').some((t) => {
     if (t === 'null') return value === null;
     if (t === 'integer') return Number.isInteger(value);
@@ -74,7 +87,11 @@ export function validateConfig(raw, schema = SCHEMA, defaults = DEFAULTS, prefix
       errors.push(...nested.errors);
       config[key] = nested.config;
     } else if (!typeOk(spec, value)) {
-      const expected = Array.isArray(spec) ? `one of ${spec.map((s) => JSON.stringify(s)).join(', ')}` : spec;
+      const expected = Array.isArray(spec)
+        ? `one of ${spec.map((s) => JSON.stringify(s)).join(', ')}`
+        : spec === 'windows'
+          ? 'a list of { "from": "YYYY-MM-DD", "to": "YYYY-MM-DD" } windows with from <= to'
+          : spec;
       errors.push(`Config key "${name}" must be ${expected}, got ${JSON.stringify(value)}`);
       config[key] = structuredClone(defaults[key]);
     } else {

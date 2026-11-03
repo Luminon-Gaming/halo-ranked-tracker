@@ -60,6 +60,25 @@ test('null playlist => unavailable for everyone; rotation flag => not_in_rotatio
   assert.equal(data.modes.snipers.inRotation, false);
 });
 
+test('auto rotation flips Snipers on the scheduled date with no config edit', async () => {
+  const { source, accounts } = await createFixtureSource({ log: quiet });
+  const c = config();
+  assert.equal(c.rotation.snipers, 'auto');
+  const nov2 = await runFetch({ config: c, paths, source, accounts, log: quiet, now: () => new Date('2026-11-02T11:00:00Z'), downloadAssets: false });
+  assert.equal(nov2.data.modes.snipers.inRotation, true);
+  assert.deepEqual(nov2.data.modes.snipers.rotation, { source: 'auto', liveUntil: '2026-11-02', next: { from: '2027-02-02', to: '2027-03-01' } });
+  assert.equal(byTag(nov2.data, 'VoidHarbinger').modes.snipers.status, 'ranked');
+
+  const nov3 = await runFetch({ config: c, paths, source, accounts, log: quiet, now: () => new Date('2026-11-03T11:00:00Z'), downloadAssets: false });
+  assert.equal(nov3.data.modes.snipers.inRotation, false);
+  assert.equal(nov3.data.modes.snipers.rotation.liveUntil, null);
+  assert.equal(byTag(nov3.data, 'VoidHarbinger').modes.snipers.status, 'not_in_rotation');
+  assert.equal(byTag(nov3.data, 'VoidHarbinger').modes.snipers.csr, 1372);
+  // Permanent playlists carry no rotation block and stay live.
+  assert.equal(nov3.data.modes.arena.inRotation, true);
+  assert.equal(nov3.data.modes.arena.rotation, undefined);
+});
+
 test('unknown playlist id returns unavailable, not a crash', async () => {
   const { source, accounts } = await createFixtureSource({ log: quiet });
   const c = config();

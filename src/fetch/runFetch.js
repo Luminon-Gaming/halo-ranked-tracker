@@ -8,6 +8,7 @@ import { chunk } from './throttle.js';
 import { readJson, writeJsonAtomic } from './writeAtomic.js';
 import { ensureTierIcons, ensureEmblem } from './icons.js';
 import { acquireLock } from './lock.js';
+import { resolveRotation } from '../rotation.js';
 
 const GOOD = new Set(['ranked', 'placement', 'unranked', 'not_in_rotation']);
 const errMsg = (e) => (statusOf(e) ? `HTTP ${statusOf(e)}` : e?.message || String(e));
@@ -21,9 +22,23 @@ export async function runFetch({ config, paths, source, accounts, prev = null, x
   const targets = onlySet ? accounts.filter((a) => onlySet.has(a.gamertag.toLowerCase())) : accounts;
   const cache = { ...xuidCache };
   const batchSize = config.throttle.csrBatchSize;
+  // Rotation is resolved every run from config.rotationSchedule (or a forced true/false in config.rotation).
+  const rotation = resolveRotation(config, now(), MODE_KEYS);
   const modes = Object.fromEntries(
-    MODE_KEYS.map((k) => [k, { label: MODES[k], playlistId: config.playlists[k] ?? null, inRotation: config.rotation[k] ?? true }]),
+    MODE_KEYS.map((k) => {
+      const r = rotation[k];
+      const mode = { label: MODES[k], playlistId: config.playlists[k] ?? null, inRotation: r.inRotation };
+      if (r.source !== 'default') mode.rotation = { source: r.source, liveUntil: r.liveUntil, next: r.next };
+      return [k, mode];
+    }),
   );
+  for (const k of MODE_KEYS) {
+    const r = rotation[k];
+    if (r.source === 'default') continue;
+    const state = r.inRotation ? `in rotation${r.liveUntil ? ` through ${r.liveUntil}` : ''}` : `out of rotation${r.next ? ` until ${r.next.from}` : ''}`;
+    log.info?.(`[rotation] ${k}: ${state} (${r.source === 'auto' ? 'schedule' : 'forced in config.json'})`);
+    if (r.scheduleExhausted) log.warn?.(`[rotation] rotationSchedule.${k} has no current or upcoming window. Add the next dates from the Halo Support playlists page.`);
+  }
 
   // Season is looked up every run: rank resets (e.g. Nov 3, 2026) start a new CSR season.
   let csrSeasonId = null;
