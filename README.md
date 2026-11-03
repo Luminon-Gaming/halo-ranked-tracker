@@ -78,14 +78,16 @@ If you just want to try a fetch without registering an Azure app:
 | Ranked Slayer | `dcb2e24e-05fb-4390-8076-32a0cdb4326e` | Permanent |
 | Ranked Snipers | `6233381c-fc96-40b9-b1ff-f6a4de72dd7a` | **Rotates.** Live Sep 1 to Nov 2, 2026, then back Feb 2 to Mar 1, 2027 |
 
-- **Rotation isn't hardcoded.** When Snipers leaves rotation, set `"rotation": { "snipers": false }` in `config.json`. The tracker still queries the playlist. If data comes back, each player's last Snipers rank is shown dimmed and labelled **Out of rotation** (`not_in_rotation`). Otherwise the cell shows **Unavailable**. The column always stays.
-- **Dashboard banner.** The page shows a heads-up banner in the 30 days before Snipers leaves rotation, and a warning if the date has passed but `rotation.snipers` in `config.json` hasn't been updated (and again around the Feb 2 / Mar 1, 2027 rotation). The dates live in `CAL` at the top of the banner section in `public/app.js`. Add `?bannerDate=2026-11-02` to the URL to preview a date. Visitors can dismiss it.
+- **Rotation is automatic.** `"rotation": { "snipers": "auto" }` (the default) makes every fetch check today's date, in `schedule.timezone`, against `rotationSchedule.snipers` in `config.json`. That's a list of inclusive `{ "from", "to" }` dates copied from the official [Halo Support playlists page](https://support.halowaypoint.com/hc/en-us/articles/17920041655188-Halo-Infinite-Multiplayer-Playlists). No manual edit is needed on Nov 2. The 6 AM fetch on Nov 3 marks Snipers out of rotation, and the Feb 2, 2027 fetch brings it back. When Halo announces new windows, add them to `rotationSchedule.snipers`. If the schedule has no current or upcoming window, the fetch log warns you.
+- **Forcing it.** Set `rotation.snipers` to `true` or `false` to override the schedule, for example if Halo changes the rotation at short notice.
+- **Out of rotation** still queries the playlist. If data comes back, each player's last Snipers rank is shown dimmed and labelled **Out of rotation** (`not_in_rotation`). Otherwise the cell shows **Unavailable**. The column always stays.
+- **Dashboard banner.** In auto mode, the page shows a heads-up in the 30 days before Snipers' last live day (from `modes.snipers.rotation` in `ranks.json`). If the rotation is forced or the data is from an older fetcher, it falls back to the dates in `CAL` in `public/app.js` and warns when the data looks out of date. `CAL` also holds the CSR reset date. Add `?bannerDate=2026-11-02` to the URL to preview a date. Visitors can dismiss the banner.
 - **Rank reset on Nov 3, 2026.** The CSR season is read from the CSR calendar on every run, so the new season is picked up automatically. Expect lots of **Placement · N left** cells for a few days afterwards.
 - A playlist set to `null` shows **Unavailable** for everyone.
 
 ## Data contract
 
-`data/ranks.json` (schema version 1): `lastUpdated`, `lastAttempt`, `csrSeasonId`, `modes` (label, playlist ID, `inRotation`), and `players[]` with `gamertag`, `xuid`, `emblemUrl`, `stale`, `error` and a per-mode object:
+`data/ranks.json` (schema version 1): `lastUpdated`, `lastAttempt`, `csrSeasonId`, `modes` (label, playlist ID, `inRotation`, plus an optional `rotation` block for rotating playlists: `{ source: "auto" | "config", liveUntil, next: { from, to } }`), and `players[]` with `gamertag`, `xuid`, `emblemUrl`, `stale`, `error` and a per-mode object:
 
 `status` (`ranked | placement | unranked | not_in_rotation | unavailable | error`), `csr`, `tier`, `subTier` (**1-indexed**: the API's 0-indexed `SubTier` + 1), `tierStartCsr`, `nextTier`, `nextSubTier`, `nextTierCsr` (null for Onyx), `progressPct`, `matchesRemaining`, `peakCsr`/`peakTier`/`peakSubTier` (season high), `allTimePeakCsr`, and `tierIconUrl`.
 
@@ -124,7 +126,8 @@ Alternatives: `pm2 start src/server.js --name halo-ranks`, or Windows Task Sched
 | `schedule` | `0 6 * * *`, `America/New_York`, `fetchOnBootIfStaleHours: 24` | Any IANA timezone |
 | `throttle` | concurrency 2, 500 ms between requests, 4 retries, 1 s base backoff, 25 players per CSR call | |
 | `playlists` | the four GUIDs above | `null` = mode unavailable |
-| `rotation.snipers` | `true` | Set `false` when Snipers leaves rotation |
+| `rotation.snipers` | `"auto"` | `"auto"` follows `rotationSchedule.snipers`. `true` or `false` forces it |
+| `rotationSchedule.snipers` | official windows through Mar 1, 2027 | Inclusive `{ "from": "YYYY-MM-DD", "to": "YYYY-MM-DD" }` dates in `schedule.timezone` |
 | `emblemSource` | `gamerpic` | `spartan-emblem` is reserved for later and currently falls back to the gamerpic |
 | `accentColor` | `#2ee6a6` | Dashboard accent |
 | `accountsFile`, `dataFile` | `accounts.txt`, `data/ranks.json` | |
