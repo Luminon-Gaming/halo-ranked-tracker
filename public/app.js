@@ -230,7 +230,9 @@ function renderHeader() {
 }
 
 // --- Rotation / reset banner ---------------------------------------------------
-// Ranked Snipers rotation and CSR reset dates (local time). Update when Halo announces new dates.
+// The fetcher resolves Snipers rotation from config.rotationSchedule and records it in
+// modes.snipers.rotation. CAL is only the CSR reset date plus a fallback for data written
+// with a forced rotation value (or by an older fetcher). Update when Halo announces new dates.
 const CAL = {
   snipersOut: '2026-11-02',
   reset: '2026-11-03',
@@ -239,21 +241,36 @@ const CAL = {
 };
 const day = (iso) => new Date(`${iso}T00:00:00`);
 const fmtDay = (iso) => day(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-const CONFIG_HINT = 'Set <code>"rotation": { "snipers": %s }</code> in <code>config.json</code>.';
+const CONFIG_HINT = 'Set <code>"rotation": { "snipers": "auto" }</code> in <code>config.json</code> to follow the schedule automatically.';
 
 function bannerFor(d, now) {
   const inRot = d.modes?.snipers?.inRotation !== false;
+  const rot = d.modes?.snipers?.rotation;
   const t = now.getTime();
   const at = (iso) => day(iso).getTime();
   const DAY = 864e5;
+  const resetBanner = () =>
+    t >= at(CAL.reset) && t < at(CAL.reset) + 7 * DAY
+      ? { key: `reset-${CAL.reset}`, level: 'info', html: `New CSR season started ${fmtDay(CAL.reset)}. Expect lots of <strong>Placement</strong> cells for the next few days.` }
+      : null;
+
+  if (rot?.source === 'auto') {
+    // Rotation follows the schedule on every fetch, so there's nothing to fix by hand.
+    if (inRot && rot.liveUntil && t < at(rot.liveUntil) + DAY && t >= at(rot.liveUntil) - 30 * DAY) {
+      const reset = at(CAL.reset) > t && at(CAL.reset) <= at(rot.liveUntil) + 2 * DAY ? ` and CSR resets ${fmtDay(CAL.reset)}` : '';
+      return { key: `soon-${rot.liveUntil}`, level: 'info', html: `Heads up: <strong>Ranked Snipers leaves rotation after ${fmtDay(rot.liveUntil)}</strong>${reset}. The tracker switches it over automatically.` };
+    }
+    return resetBanner();
+  }
+
   if (t >= at(CAL.snipersOut2) && inRot)
-    return { key: `out2-${CAL.snipersOut2}`, level: 'warn', html: `Ranked Snipers left rotation on ${fmtDay(CAL.snipersOut2)}. ${CONFIG_HINT.replace('%s', 'false')}` };
+    return { key: `out2-${CAL.snipersOut2}`, level: 'warn', html: `Ranked Snipers left rotation on ${fmtDay(CAL.snipersOut2)}. ${CONFIG_HINT}` };
   if (t >= at(CAL.snipersBack) && t < at(CAL.snipersOut2) && !inRot)
-    return { key: `back-${CAL.snipersBack}`, level: 'warn', html: `Ranked Snipers is back in rotation as of ${fmtDay(CAL.snipersBack)}. ${CONFIG_HINT.replace('%s', 'true')}` };
+    return { key: `back-${CAL.snipersBack}`, level: 'warn', html: `Ranked Snipers is back in rotation as of ${fmtDay(CAL.snipersBack)}. ${CONFIG_HINT}` };
   if (t >= at(CAL.snipersOut) && t < at(CAL.snipersBack) && inRot)
-    return { key: `out-${CAL.snipersOut}`, level: 'warn', html: `Ranked Snipers left rotation on ${fmtDay(CAL.snipersOut)}, but this tracker still treats it as live. ${CONFIG_HINT.replace('%s', 'false')}` };
-  if (t >= at(CAL.reset) && t < at(CAL.reset) + 7 * DAY)
-    return { key: `reset-${CAL.reset}`, level: 'info', html: `New CSR season started ${fmtDay(CAL.reset)}. Expect lots of <strong>Placement</strong> cells for the next few days.` };
+    return { key: `out-${CAL.snipersOut}`, level: 'warn', html: `Ranked Snipers left rotation on ${fmtDay(CAL.snipersOut)}, but this tracker still treats it as live. ${CONFIG_HINT}` };
+  const reset = resetBanner();
+  if (reset) return reset;
   if (t < at(CAL.snipersOut) && t >= at(CAL.snipersOut) - 30 * DAY)
     return { key: `soon-${CAL.snipersOut}`, level: 'info', html: `Heads up: <strong>Ranked Snipers leaves rotation ${fmtDay(CAL.snipersOut)}</strong> and CSR resets ${fmtDay(CAL.reset)}. Everyone goes back to placements after the reset.` };
   return null;
