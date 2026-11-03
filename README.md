@@ -154,6 +154,20 @@ npm run deploy          # rebuilds .preview/ (scripts/build-preview.js), then wr
 
 `scripts/build-preview.js` also writes `.preview/_redirects` (`/api/ranks` → `/api/ranks.json`) and `.preview/_headers` (no-cache for `/api/*`, one week for `/tiers/*`). To try it locally first: `node scripts/build-preview.js && npx wrangler dev`.
 
+### CI and automatic deploys
+
+- **CI** (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main`: `npm ci`, `npm test`, then `node scripts/build-preview.js`. It needs no secrets. The repo has no lint script.
+- **Deploy** (`.github/workflows/deploy.yml`) runs on pushes to `main` and manually (Actions → Deploy preview → Run workflow). It builds the preview and runs `wrangler deploy` (wrangler 4.151.0, the same as `npm run deploy`) through `cloudflare/wrangler-action`. Afterwards it requests the workers.dev URL and `/api/ranks`, and fails unless both return 200.
+
+One-time setup: create a GitHub environment named `production` (Settings → Environments) and add these secrets to it:
+
+| Secret | Value |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | API token with the "Edit Cloudflare Workers" permission |
+| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID |
+
+Optionally add required reviewers to `production` to gate each deploy. Workflow actions are pinned to commit SHAs; update them deliberately.
+
 ## Security
 
 Secrets live only in `.env` and `.cache/` (MSAL cache, Xbox/Halo tokens, saved with mode 600). Both are git-ignored, as are downloaded gamerpics and the XUID cache. After a real run, `git status` should show only `data/ranks.json` changed.
