@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 const DEFAULT_PLAYER = 'DaLuminar';
 const MAX_RECENT = 8;
 // data is what gets rendered: the looked-up player (view 'player') or the daily roster (view 'roster').
-const state = { data: null, roster: null, lookup: null, view: 'player', player: DEFAULT_PLAYER, recent: [], busy: false, note: '', q: '', sort: 'arena', dir: 'desc' };
+const state = { data: null, roster: null, lookup: null, view: 'player', player: DEFAULT_PLAYER, linked: false, recent: [], busy: false, note: '', q: '', sort: 'arena', dir: 'desc' };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const rankName = (tier, sub) => (tier ? (sub ? `${tier} ${sub}` : tier) : '');
@@ -39,7 +39,9 @@ function readUrl() {
   const p = new URLSearchParams(location.search);
   const prefs = loadPrefs();
   state.recent = prefs.recent;
-  state.player = p.get('player')?.trim().slice(0, 40) || prefs.last || DEFAULT_PLAYER;
+  const linked = p.get('player')?.trim().slice(0, 40);
+  state.linked = !!linked;
+  state.player = linked || prefs.last || DEFAULT_PLAYER;
   state.view = p.get('view') === 'roster' ? 'roster' : 'player';
   state.q = p.get('q') ?? '';
   state.sort = p.get('sort') ?? 'arena';
@@ -405,8 +407,12 @@ function showLookupError(title, msg) {
   renderControls();
 }
 
-/** Looks one gamertag up through the local server. Resolves true when a player is on screen. */
-async function lookupPlayer(raw) {
+/**
+ * Looks one gamertag up through the local server. Resolves true when a player is on screen.
+ * Where there is no lookup endpoint, `filter` decides whether the roster is narrowed to that name
+ * (a search or a ?player= link) or shown in full (the automatic lookup on page load).
+ */
+async function lookupPlayer(raw, { filter = true } = {}) {
   const gamertag = String(raw ?? '').trim().replace(/\s+/g, ' ');
   if (!gamertag || state.busy) return false;
   state.busy = true;
@@ -420,7 +426,7 @@ async function lookupPlayer(raw) {
       if (state.roster) {
         // Nothing to look up against, so the search box just filters the saved roster.
         state.view = 'roster';
-        state.q = gamertag;
+        if (filter) state.q = gamertag;
         writeUrl();
         applyView();
       } else showLookupError('Live lookup isn’t available here', 'This copy only serves saved data. Run the app locally with npm start to look up any player.');
@@ -451,7 +457,7 @@ async function lookupPlayer(raw) {
 async function start() {
   await loadRoster();
   if (state.view === 'roster' && state.roster) return applyView();
-  if (await lookupPlayer(state.player)) return;
+  if (await lookupPlayer(state.player, { filter: state.linked })) return;
   if (state.roster) {
     state.view = 'roster';
     writeUrl();

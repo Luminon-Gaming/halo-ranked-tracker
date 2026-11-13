@@ -23,7 +23,7 @@ A read-only copy of this preview is also deployed on Cloudflare Workers (see [De
 
 Type a gamertag in the search box (`Name` or `Name#1234`) and press Enter. The server runs the normal pipeline for that one player, caches the answer for 5 minutes, and never touches `data/ranks.json`. The last player and the 8 most recent lookups are kept in your browser's `localStorage` (key `lookup-prefs`), and a `?player=Name` link wins over the saved one. The **Roster** button switches to the daily `accounts.txt` list, which is optional now.
 
-Lookups need the sign-in from `npm run auth`, so they only work where `npm start` runs. The hosted preview is static files with no server code, so there the search box just filters the sample roster and says so.
+Lookups need the sign-in from `npm run auth`, so they only work where `npm start` runs. The hosted preview is static files with no server code, so there the page opens on the full squad roster from `/api/ranks`, the search box filters it, and the page says lookup isn't available. A `?player=Name` link there opens the roster filtered to that name.
 
 ## Prerequisites
 
