@@ -70,6 +70,30 @@ test('an expired sign-in is a 503 asking for npm run auth', async () => {
   await assert.rejects(lookup('VoidHarbinger'), (e) => e instanceof LookupError && e.status === 503 && /npm run auth/.test(e.message));
 });
 
+test('a sign-in error while creating the source is a 503, and the next lookup retries', async () => {
+  let calls = 0;
+  const lookup = createLookup({
+    config: config(), paths, log: quiet, now,
+    getSource: () => { calls++; throw new AuthRequiredError('No credentials: set HALO_AZURE_CLIENT_ID in .env and run "npm run auth".'); },
+  });
+  await assert.rejects(lookup('VoidHarbinger'), (e) => e instanceof LookupError && e.status === 503 && e.code === 'auth_required');
+  await assert.rejects(lookup('VoidHarbinger'), (e) => e instanceof LookupError && e.status === 503);
+  assert.equal(calls, 2, 'a failed create is not cached');
+});
+
+test('GET /api/player answers 503 auth_required when the source cannot sign in', async () => {
+  const lookup = createLookup({ config: config(), paths, log: quiet, now, getSource: () => { throw new AuthRequiredError(); } });
+  const server = createServer({ config: config(), paths: { ...paths, dataFile: '/nonexistent/ranks.json', lastAttempt: '/nonexistent/a.json', publicDir: '/nonexistent', assetsDir: '/nonexistent' }, log: quiet, lookup });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/player?gamertag=VoidHarbinger`);
+    assert.equal(res.status, 503);
+    assert.equal((await res.json()).error, 'auth_required');
+  } finally {
+    server.close();
+  }
+});
+
 test('GET /api/player maps results and errors to HTTP', async () => {
   const { lookup } = await setup();
   const server = createServer({ config: config(), paths: { ...paths, dataFile: '/nonexistent/ranks.json', lastAttempt: '/nonexistent/a.json', publicDir: '/nonexistent', assetsDir: '/nonexistent' }, log: quiet, lookup });

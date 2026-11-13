@@ -24,10 +24,12 @@ export function createLookup({ config, paths, getSource = () => HaloApiSource.cr
   let source = null;
 
   async function fetchOne(gamertag) {
-    source ??= getSource();
     const xuidCache = await readJson(paths.xuidCache, {}).catch(() => ({}));
     let result;
     try {
+      // Created inside the try: HaloApiSource.create() throws AuthRequiredError when no credentials
+      // are set, and that must become the 503 too. A failed create leaves `source` null to retry.
+      source ??= getSource();
       result = await runFetch({ config, paths, source, accounts: [{ gamertag }], xuidCache, log, now });
     } catch (e) {
       if (isAuthError(e)) throw new LookupError(503, 'auth_required', 'Sign-in expired. Run "npm run auth".');
