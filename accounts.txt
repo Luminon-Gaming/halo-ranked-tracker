@@ -1,3 +1,11 @@
 # One gamertag per line. Blank lines and lines starting with # are ignored.
 # Duplicates (case-insensitive) are dropped; the first spelling is used for display.
 # Modern gamertags with a numeric suffix are written as Name#1234.
+wunfish
+Call Me r0n
+r0nd0n1059
+itz not r0n
+r0nd0n x
+n0dn0r
+The Fig Lord
+DaLuminar
