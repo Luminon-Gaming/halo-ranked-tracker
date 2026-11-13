@@ -1,10 +1,35 @@
 {
-  // Read-only dashboard preview (sample data) served as static assets; no Worker code.
-  // `npm run deploy` rebuilds .preview/ first. The real tracker runs locally (`npm start`).
+  // Hosted copy: static squad dashboard (.preview/) plus optional live player lookup (off by default, see LOOKUP_ENABLED).
+  // `npm run deploy` rebuilds .preview/ first. Lookup needs these secrets (README → "Hosted lookup"), set with
+  // `wrangler secret put`, never in this file: HALO_AZURE_CLIENT_ID, HALO_REFRESH_TOKEN_SEED, IP_SALT,
+  // and optionally TURNSTILE_SECRET + TURNSTILE_SITE_KEY.
   "name": "halo-ranked-tracker",
+  "main": "worker/index.js",
   "compatibility_date": "2026-10-13",
   "workers_dev": true,
   "assets": {
-    "directory": "./.preview"
-  }
+    "directory": "./.preview",
+    "binding": "ASSETS",
+    // Only these reach the Worker; /api/ranks keeps being served by the static _redirects rule.
+    "run_worker_first": ["/api/player", "/api/avatar/*", "/api/config"]
+  },
+  "durable_objects": { "bindings": [{ "name": "VAULT", "class_name": "HaloVault" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HaloVault"] }],
+  // Per visitor and per Cloudflare location; the global budgets live in the vault (see LIMIT_* below).
+  "ratelimits": [
+    { "name": "RL_BURST", "namespace_id": "4101", "simple": { "limit": 6, "period": 10 } },
+    { "name": "RL_MINUTE", "namespace_id": "4102", "simple": { "limit": 20, "period": 60 } }
+  ],
+  "vars": {
+    // Ships switched off: with "false" the Worker needs no secrets and only serves the static roster; lookup routes
+    // answer "lookup_disabled". Set "true" (after the secrets above are in place) and redeploy to switch lookups on.
+    "LOOKUP_ENABLED": "false",
+    "LIMIT_UNCACHED_PER_MINUTE": "30",
+    "LIMIT_UNCACHED_PER_HOUR": "600",
+    "LIMIT_UNCACHED_PER_DAY": "3000",
+    "LIMIT_UNCACHED_PER_IP_PER_HOUR": "30",
+    "LIMIT_UNCACHED_PER_ACCOUNT_PER_HOUR": "60",
+    "LIMIT_UPSTREAM_PER_MINUTE": "300"
+  },
+  "observability": { "enabled": true }
 }

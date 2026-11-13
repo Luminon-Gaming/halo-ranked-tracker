@@ -5,13 +5,9 @@ import { isWindowList } from './rotation.js';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-export const MODES = {
-  arena: 'Ranked Arena',
-  doubles: 'Ranked Doubles',
-  slayer: 'Ranked Slayer',
-  snipers: 'Ranked Snipers',
-};
-export const MODE_KEYS = Object.keys(MODES);
+import { MODES, MODE_KEYS } from './modes.js';
+
+export { MODES, MODE_KEYS };
 
 /** Shape used for validation: every leaf is a type spec. */
 const SCHEMA = {

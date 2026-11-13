@@ -12,4 +12,5 @@ data/ranks.dry-run.json
 public/tiers/*.png
 *.log
 .wrangler/
+.dev.vars*
 .DS_Store
