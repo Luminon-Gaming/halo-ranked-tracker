@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.js';
 import { startScheduler } from './scheduler.js';
+import { createLookup, LookupError } from './lookup.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -30,7 +31,7 @@ function safeJoin(dir, rel) {
   return full.startsWith(path.resolve(dir) + path.sep) ? full : null;
 }
 
-export function createServer({ config, paths, log = console }) {
+export function createServer({ config, paths, log = console, lookup = createLookup({ config, paths, log }) }) {
   async function ranksBody() {
     const data = await readJsonSafe(paths.dataFile);
     if (!data) return null;
@@ -73,6 +74,20 @@ export function createServer({ config, paths, log = console }) {
         }
         res.writeHead(200, { 'Content-Type': TYPES['.json'], 'Cache-Control': 'no-cache', ETag: etag });
         return res.end(req.method === 'HEAD' ? undefined : body);
+      }
+      if (pathname === '/api/player') {
+        const gamertag = new URL(req.url, 'http://localhost').searchParams.get('gamertag');
+        const json = (status, obj) => {
+          res.writeHead(status, { 'Content-Type': TYPES['.json'], 'Cache-Control': 'no-cache' });
+          res.end(req.method === 'HEAD' ? undefined : JSON.stringify(obj));
+        };
+        try {
+          return json(200, await lookup(gamertag));
+        } catch (e) {
+          if (e instanceof LookupError) return json(e.status, { error: e.code, message: e.message });
+          log.error?.(`[lookup] ${e.stack || e.message}`);
+          return json(502, { error: 'lookup_failed', message: 'The lookup failed. Try again in a moment.' });
+        }
       }
       if (pathname.startsWith('/assets/')) {
         const file = safeJoin(paths.assetsDir, pathname.slice('/assets/'.length));
