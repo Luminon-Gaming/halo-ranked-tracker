@@ -163,13 +163,15 @@ npm run deploy:staging  # same, to a separate Worker named halo-ranked-tracker-s
 
 ## Hosted lookup (sign in with your own account)
 
+**Lookup ships switched off.** `wrangler.jsonc` sets `LOOKUP_ENABLED` to `"false"`, so the deployed Worker needs no secrets at all: the dashboard and `/api/ranks` are served from the static assets (the full squad roster), `/api/player` and `/api/avatar/*` answer `503 {"error":"lookup_disabled"}`, and `/api/config` answers `{"lookup":false,"turnstileSiteKey":null,"signin":null}`. The Durable Object is never created while it is off. To switch lookup on, finish the setup below, set the var to `"true"` and redeploy. To try it before that, pass `--var LOOKUP_ENABLED:true` to `wrangler dev` or to a staging `wrangler deploy`.
+
 On the hosted site a visitor can sign in with their own Microsoft account, and lookups are then made as that visitor. The Worker keeps nothing of theirs: the page signs in with the authorization-code flow with PKCE (`public/auth.js`, no library), keeps the tokens in `sessionStorage` only, and sends the short-lived access token to `/api/player` as `Authorization: Bearer`. For that one request the Worker builds a fresh token chain in memory (Xbox user token → XSTS → Halo Spartan token), looks the player up and forgets everything. Tokens are only ever sent to Xbox and Halo hosts. Players that someone has already looked up (cached 30 minutes, 1 hour for "no such gamertag") are also shown to signed-out visitors, since that data is public. A token that Xbox rejects gives a 401 for that visitor alone; it never pauses lookups for anyone else.
 
 **One-time setup (yours; it changes your Azure app):**
 
 1. In the Azure portal open the app → **Authentication** → **Add a platform** → **Single-page application**, and add these redirect URIs (they must match exactly, trailing slash included): `http://localhost:8787/`, your staging URL and your real URL, e.g. `https://halo-ranked-tracker.<account>.workers.dev/`. Microsoft only allows the browser to redeem the code cross-origin for redirect URIs of this platform type. The existing *Mobile and desktop* `http://localhost` entry stays for `npm run auth`.
 2. Tell the Worker the client ID (it is public by design; it appears in every sign-in URL): `npx wrangler secret put HALO_AZURE_CLIENT_ID` (add `--name halo-ranked-tracker-staging` for staging). For a local run put `HALO_AZURE_CLIENT_ID=<id>` in `.dev.vars` (git-ignored).
-3. Try it locally first: `node scripts/build-preview.js && npx wrangler@4.151.0 dev --port 8787`, open <http://localhost:8787>, click **Sign in with Microsoft** with the account you play Halo on, and look up DaLuminar. Compare the result with `npm start`.
+3. Try it locally first: `node scripts/build-preview.js && npx wrangler@4.151.0 dev --port 8787 --var LOOKUP_ENABLED:true`, open <http://localhost:8787>, click **Sign in with Microsoft** with the account you play Halo on, and look up DaLuminar. Compare the result with `npm start`.
 
 The account must have an Xbox profile. With none, Xbox rejects the token and the page asks for a sign-in again.
 
@@ -184,7 +186,7 @@ How it fits together: the Azure app from [Azure app registration](#azure-app-reg
 **One-time setup (you do these; the steps involve your accounts and secrets):**
 
 1. Create a new Microsoft account for this, then create its Xbox profile at <https://www.xbox.com> and open Halo Infinite once (or sign in to Halo Waypoint). Without an Xbox profile the Xbox sign-in step fails with a 401.
-2. Deploy a test Worker first: `npm run deploy:staging`.
+2. Deploy a test Worker first with lookup on: `node scripts/build-preview.js && npx wrangler@4.151.0 deploy --name halo-ranked-tracker-staging --var LOOKUP_ENABLED:true` (`npm run deploy:staging` deploys it switched off, like production).
 3. Upload the account's token (a private browser window helps if you are signed in to another Microsoft account):
    ```bash
    npm run seed:worker -- --name halo-ranked-tracker-staging --expect dedicated@outlook.com
@@ -206,7 +208,7 @@ The staging and real Workers share the two rate-limit counters (`namespace_id` 4
 | Circuit breaker | A rejected sign-in stops all Halo calls for 30 minutes, a Halo 429 for 5, and a lookup where every playlist failed with a Halo 5xx for 1. A new `seed:worker` clears an open breaker at once. One player's own 401/403 never trips it. |
 | Egress | Tokens can only be sent to Microsoft, Xbox and Halo hosts. Avatars are proxied only from URLs that Halo returned, on the Xbox image host. |
 | Secrets | Only error codes are kept from Microsoft's replies. Nothing from an upstream error body, no token and no IP address reaches a response or a log. |
-| Kill switch | Set `LOOKUP_ENABLED` to `"false"` in `wrangler.jsonc` and redeploy. The page then falls back to the full roster from `/api/ranks`. |
+| Kill switch | `LOOKUP_ENABLED` in `wrangler.jsonc` ships as `"false"`; set it to `"true"` and redeploy to switch lookup on, back to `"false"` to switch it off. While off, the page shows the full roster from `/api/ranks` and says lookup is off. |
 
 If lookups stop working with "unavailable", the dedicated account's sign-in was rejected: run `seed:worker` again.
 
@@ -240,7 +242,7 @@ public/         dashboard (index.html, styles.css, app.js, tiers/)
 data/           ranks.json (sample committed), xuid-cache.json, assets/
 test/           node:test suites + fixtures
 scripts/        build-preview.js (static preview for Cloudflare Workers)
-worker/         Cloudflare Worker: index.js (routes), guard.js (request checks), vaultCore.js (tokens, budgets, cache)
+worker/         Cloudflare Worker: index.js (entry + Durable Object), routes.js (routes), guard.js (request checks), vaultCore.js (tokens, budgets, cache)
 wrangler.jsonc  Workers config: static assets, the HaloVault Durable Object, rate limits, LIMIT_* vars
 ```
 

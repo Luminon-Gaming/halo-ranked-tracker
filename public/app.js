@@ -9,7 +9,7 @@ const $ = (id) => document.getElementById(id);
 const DEFAULT_PLAYER = 'DaLuminar';
 const MAX_RECENT = 8;
 // data is what gets rendered: the looked-up player (view 'player') or the daily roster (view 'roster').
-const state = { data: null, roster: null, lookup: null, view: 'player', player: DEFAULT_PLAYER, linked: false, recent: [], busy: false, note: '', lastError: '', siteKey: null, signin: null, redrawAuth: null, ts: null, q: '', sort: 'arena', dir: 'desc' };
+const state = { data: null, roster: null, lookup: null, view: 'player', player: DEFAULT_PLAYER, linked: false, lookupOff: false, recent: [], busy: false, note: '', lastError: '', siteKey: null, signin: null, redrawAuth: null, ts: null, q: '', sort: 'arena', dir: 'desc' };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const rankName = (tier, sub) => (tier ? (sub ? `${tier} ${sub}` : tier) : '');
@@ -430,9 +430,24 @@ function turnstileToken() {
   });
 }
 
+const LOOKUP_OFF = 'Player lookup is switched off on this site';
+/** No lookup here (static host, or switched off): the search box just filters the saved roster. */
+function noLookup(gamertag, filter, note) {
+  state.note = note;
+  if (!state.roster) {
+    showLookupError('Live lookup isn’t available here', 'This copy only serves saved data. Run the app locally with npm start to look up any player.');
+    return false;
+  }
+  state.view = 'roster';
+  if (filter) state.q = gamertag;
+  writeUrl();
+  applyView();
+  return false;
+}
+
 /**
  * Looks one gamertag up through the server. Resolves true when a player is on screen.
- * Where there is no lookup endpoint, `filter` decides whether the roster is narrowed to that name
+ * Where lookup isn’t available (static host, or switched off), `filter` decides whether the roster is narrowed to that name
  * (a search or a ?player= link) or shown in full (the automatic lookup on page load).
  */
 async function lookupPlayer(raw, { filter = true } = {}) {
@@ -442,24 +457,19 @@ async function lookupPlayer(raw, { filter = true } = {}) {
   $('go').disabled = true;
   $('count').textContent = `Looking up ${gamertag}…`;
   try {
+    if (state.lookupOff) return noLookup(gamertag, filter, LOOKUP_OFF);
     const headers = { Accept: 'application/json' };
     const token = state.signin ? await accessToken() : null; // the visitor's own Microsoft sign-in, when the host offers it
     if (token) headers.Authorization = `Bearer ${token}`;
     if (state.siteKey) headers['x-turnstile-token'] = await turnstileToken();
     const res = await fetch(`/api/player?gamertag=${encodeURIComponent(gamertag)}`, { headers });
-    if (!(res.headers.get('content-type') ?? '').includes('application/json')) {
-      // The hosted preview is static files only, so there is no lookup endpoint behind it.
-      state.note = 'Live lookup needs the local app (npm start)';
-      if (state.roster) {
-        // Nothing to look up against, so the search box just filters the saved roster.
-        state.view = 'roster';
-        if (filter) state.q = gamertag;
-        writeUrl();
-        applyView();
-      } else showLookupError('Live lookup isn’t available here', 'This copy only serves saved data. Run the app locally with npm start to look up any player.');
-      return false;
-    }
+    // A static host has no lookup endpoint behind it (no JSON comes back).
+    if (!(res.headers.get('content-type') ?? '').includes('application/json')) return noLookup(gamertag, filter, 'Live lookup needs the local app (npm start)');
     const body = await res.json();
+    if (body.error === 'lookup_disabled') {
+      state.lookupOff = true;
+      return noLookup(gamertag, filter, LOOKUP_OFF);
+    }
     if (!res.ok) {
       state.lastError = res.status === 404 ? '' : (body.message ?? `HTTP ${res.status}`);
       if (res.status === 401 && token) { signOut(); state.redrawAuth?.(); } // Xbox rejected the token: ask for a fresh sign-in
@@ -489,6 +499,7 @@ async function start() {
     const res = await fetch('/api/config', { headers: { Accept: 'application/json' } });
     if ((res.headers.get('content-type') ?? '').includes('application/json')) {
       const cfg = await res.json();
+      state.lookupOff = cfg.lookup === false;
       state.siteKey = cfg.turnstileSiteKey ?? null;
       state.signin = cfg.signin?.clientId ?? null;
       if (state.signin) state.redrawAuth = mountAuth($('auth-box'), { clientId: state.signin });
