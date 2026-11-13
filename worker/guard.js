@@ -41,12 +41,18 @@ export function crossSiteBlocked(request) {
   return false;
 }
 
+/** LOOKUP_ENABLED is on unless set to "false" (any case, surrounding spaces ignored). */
+export const lookupEnabled = (env = {}) => String(env.LOOKUP_ENABLED ?? '').trim().toLowerCase() !== 'false';
+
+/** The answer for every lookup route while LOOKUP_ENABLED is "false". */
+export const lookupDisabled = () => fail(503, 'lookup_disabled', 'Player lookup is switched off on this site.', { 'Retry-After': '600' });
+
 /**
  * Validates a /api/player request. Returns { gamertag } or { response } to send back.
  * Order matters: cheap checks first, nothing here touches Halo.
  */
 export function parsePlayerRequest(request, env = {}) {
-  if (env.LOOKUP_ENABLED === 'false') return { response: fail(503, 'lookup_disabled', 'Player lookup is switched off right now.', { 'Retry-After': '600' }) };
+  if (!lookupEnabled(env)) return { response: lookupDisabled() };
   if (request.method !== 'GET') return { response: fail(405, 'method_not_allowed', 'Use GET.', { Allow: 'GET' }) };
   if (crossSiteBlocked(request)) return { response: fail(403, 'cross_site', 'Cross-site requests are not allowed.') };
   const url = new URL(request.url);

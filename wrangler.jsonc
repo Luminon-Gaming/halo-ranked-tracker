@@ -1,5 +1,5 @@
 {
-  // Hosted copy: static sample dashboard (.preview/) plus live player lookup through a dedicated Xbox account.
+  // Hosted copy: static squad dashboard (.preview/) plus optional live player lookup (off by default, see LOOKUP_ENABLED).
   // `npm run deploy` rebuilds .preview/ first. Lookup needs these secrets (README → "Hosted lookup"), set with
   // `wrangler secret put`, never in this file: HALO_AZURE_CLIENT_ID, HALO_REFRESH_TOKEN_SEED, IP_SALT,
   // and optionally TURNSTILE_SECRET + TURNSTILE_SITE_KEY.
@@ -21,7 +21,9 @@
     { "name": "RL_MINUTE", "namespace_id": "4102", "simple": { "limit": 20, "period": 60 } }
   ],
   "vars": {
-    "LOOKUP_ENABLED": "true", // set to "false" and redeploy to switch lookups off
+    // Ships switched off: with "false" the Worker needs no secrets and only serves the static roster; lookup routes
+    // answer "lookup_disabled". Set "true" (after the secrets above are in place) and redeploy to switch lookups on.
+    "LOOKUP_ENABLED": "false",
     "LIMIT_UNCACHED_PER_MINUTE": "30",
     "LIMIT_UNCACHED_PER_HOUR": "600",
     "LIMIT_UNCACHED_PER_DAY": "3000",
